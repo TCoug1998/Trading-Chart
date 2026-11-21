@@ -1,1 +1,74 @@
+name: Mise à jour des données
 
+on:
+  schedule:
+    - cron: "17 * * * 1-5"      # every hour on weekdays (UTC)
+    - cron: "17 */6 * * 0,6"    # every 6 hours at weekends (crypto)
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Envoyer une alerte de test (push et e-mail)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["web/**", "config/**", "scripts/**"]
+
+permissions:
+  contents: write   # commit the small alert-state file only
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Check signal engine against the Pine rule
+        run: python tests/test_signals.py
+
+      - name: Update data and send alerts
+        env:
+          TEST_ALERT: ${{ github.event.inputs.test_alert || 'false' }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          WEBPUSH_SUBSCRIPTION: ${{ secrets.WEBPUSH_SUBSCRIPTION }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: python scripts/update.py
+
+      - name: Save alert state
+        run: |
+          if ! git diff --quiet -- state/; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state/state.json
+            git commit -m "Alert state update"
+            git push
+          fi
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
