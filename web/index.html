@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12161f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trading Chart">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Trading Chart</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root {
+  --bg: #ffffff; --panel: #f2f4f7; --line: #e3e7ee; --text: #131722; --muted: #5e6675;
+  --up: #12a150; --down: #e5383f; --up-soft: rgba(18,161,80,.14); --down-soft: rgba(229,56,63,.13);
+  --accent: #c77700; --chart-grid: #eef1f5;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161f; --panel: #1b202b; --line: #262c39; --text: #d9dee8; --muted: #8b93a5;
+    --up: #2ec866; --down: #f5464d; --up-soft: rgba(46,200,102,.16); --down-soft: rgba(245,70,77,.16);
+    --accent: #f5a524; --chart-grid: #1c212c;
+    color-scheme: dark;
+  }
+}
+*, *::before, *::after { box-sizing: inherit; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 10; }
+button { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app { display: flex; flex-direction: column; height: 100%; max-width: 760px; margin: 0 auto; }
+.view { flex: 1; min-height: 0; display: none; flex-direction: column; }
+.view.on { display: flex; }
+.scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
+
+/* Bottom navigation */
+nav.tabs { display: flex; border-top: 1px solid var(--line); background: var(--bg); padding-bottom: 2px; }
+nav.tabs button {
+  flex: 1; background: none; border: 0; padding: 9px 0 7px; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; font-size: 12px; color: var(--muted); cursor: pointer;
+}
+nav.tabs button[aria-current="page"] { color: var(--text); }
+nav.tabs svg { width: 24px; height: 24px; }
+
+/* Chart view */
+.quote { padding: 10px 14px 4px; }
+.sym-btn { background: none; border: 0; padding: 0; display: flex; align-items: baseline; gap: 8px; cursor: pointer; text-align: left; }
+.sym-btn b { font-size: 20px; letter-spacing: .2px; }
+.sym-btn span { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56vw; }
+.sym-btn svg { width: 14px; height: 14px; color: var(--muted); align-self: center; }
+.price-row { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; flex-wrap: wrap; }
+.price { font-size: 26px; font-weight: 600; }
+.chg { font-size: 15px; font-weight: 500; }
+.tag { font-size: 12px; color: var(--accent); border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; }
+.up { color: var(--up); } .down { color: var(--down); }
+
+.trend {
+  margin: 8px 14px 6px; border-radius: 10px; padding: 10px 12px; display: grid;
+  grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: center;
+}
+.trend.up { background: var(--up-soft); }
+.trend.down { background: var(--down-soft); }
+.trend .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; grid-row: span 2; }
+.trend .head { font-weight: 600; color: var(--text); }
+.trend .sub { color: var(--muted); font-size: 13px; grid-column: 2; }
+.trend .dist { grid-row: 1 / span 2; grid-column: 3; font-size: 20px; font-weight: 600; text-align: right; }
+
+.controls { display: flex; gap: 6px; padding: 4px 14px 6px; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.controls::-webkit-scrollbar { display: none; }
+.chip {
+  border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 8px;
+  padding: 5px 10px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.chip[aria-pressed="true"] { background: var(--panel); color: var(--text); border-color: var(--muted); }
+.controls .sep { width: 1px; height: 20px; background: var(--line); flex: none; margin: 0 2px; }
+.chart-wrap { position: relative; flex: 1; min-height: 240px; }
+#chart { position: absolute; inset: 0; }
+.legend {
+  position: absolute; left: 10px; top: 6px; z-index: 3; font-size: 12px; color: var(--muted);
+  pointer-events: none; display: flex; flex-wrap: wrap; gap: 0 10px; right: 70px;
+}
+.legend b { color: var(--text); font-weight: 500; }
+
+/* List view */
+header.bar { padding: 12px 14px 6px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+header.bar h1 { font-size: 22px; margin: 0; }
+header.bar small { color: var(--muted); font-size: 12px; text-align: right; }
+.sec { padding: 14px 14px 4px; color: var(--muted); font-size: 13px; }
+.row {
+  display: grid; grid-template-columns: 4px minmax(0,1fr) auto auto; gap: 0 12px; align-items: center;
+  width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line);
+  padding: 11px 14px 11px 0; text-align: left; cursor: pointer;
+}
+.row .strip { align-self: stretch; border-radius: 0 3px 3px 0; background: var(--line); }
+.row .strip.up { background: var(--up); } .row .strip.down { background: var(--down); }
+.row .id { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 6px; }
+.row .txt { min-width: 0; display: block; }
+.row .nm { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .sig { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.pill { font-size: 12px; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+.pill.up { background: var(--up-soft); } .pill.down { background: var(--down-soft); }
+.row .px { text-align: right; min-width: 92px; }
+.row .px b { font-weight: 600; display: block; }
+.row .px span { font-size: 13px; }
+.note { color: var(--muted); font-size: 13px; padding: 12px 14px 20px; }
+
+/* Alerts view */
+.card { margin: 10px 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+.card h2 { font-size: 17px; margin: 0 0 6px; }
+.card p { margin: 6px 0; color: var(--muted); font-size: 14px; }
+.card p strong { color: var(--text); font-weight: 600; }
+.primary {
+  display: block; width: 100%; margin-top: 10px; padding: 12px; border: 0; border-radius: 10px;
+  background: var(--text); color: var(--bg); font-weight: 600; cursor: pointer;
+}
+.primary[disabled] { opacity: .45; cursor: default; }
+.secondary { margin-top: 8px; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; width: 100%; }
+textarea {
+  width: 100%; margin-top: 8px; min-height: 96px; resize: vertical; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; padding: 8px;
+}
+.status { font-weight: 600; }
+.empty { padding: 40px 20px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--text); margin-bottom: 6px; }
+@media (prefers-reduced-motion: no-preference) { .chip, .row { transition: background-color .15s; } }
+@media (hover: hover) { .row:hover { background: var(--panel); } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Chart -->
+  <section class="view" id="v-chart" aria-label="Graphique">
+    <div class="quote">
+      <button class="sym-btn" id="symBtn" aria-label="Changer de symbole">
+        <b id="qId">SPX</b><span id="qName"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="price-row">
+        <span class="price" id="qPrice">–</span>
+        <span class="chg" id="qChg"></span>
+        <span class="tag" id="qTag" hidden></span>
+      </div>
+    </div>
+    <div class="trend" id="trend" hidden>
+      <span class="dot"></span>
+      <span class="head" id="tHead"></span>
+      <span class="sub" id="tSub"></span>
+      <span class="dist" id="tDist"></span>
+    </div>
+    <div class="controls" role="toolbar" aria-label="Affichage">
+      <button class="chip" data-tf="1M">1M</button>
+      <button class="chip" data-tf="3M">3M</button>
+      <button class="chip" data-tf="6M">6M</button>
+      <button class="chip" data-tf="1A" aria-pressed="true">1A</button>
+      <button class="chip" data-tf="5A">5A</button>
+      <button class="chip" data-tf="MAX">Max</button>
+      <span class="sep"></span>
+      <button class="chip" id="modeBtn" aria-pressed="false">Bougies</button>
+      <button class="chip" id="logBtn" aria-pressed="false">Log</button>
+    </div>
+    <div class="chart-wrap">
+      <div class="legend" id="legend"></div>
+      <div id="chart"></div>
+    </div>
+  </section>
+
+  <!-- Watchlist -->
+  <section class="view" id="v-list" aria-label="Liste">
+    <header class="bar"><h1>Marchés</h1><small id="updated"></small></header>
+    <div class="scroll" id="list"></div>
+  </section>
+
+  <!-- Alerts -->
+  <section class="view" id="v-alerts" aria-label="Alertes">
+    <header class="bar"><h1>Alertes</h1></header>
+    <div class="scroll">
+      <div class="card">
+        <h2>Notifications sur ce téléphone</h2>
+        <p id="pushStatus" class="status"></p>
+        <p id="pushHelp"></p>
+        <button class="primary" id="pushBtn">Activer les notifications</button>
+        <div id="subBox" hidden>
+          <p>Copie ce code et colle-le dans le secret GitHub <strong>WEBPUSH_SUBSCRIPTION</strong>. Il identifie ce téléphone, ne le partage pas.</p>
+          <textarea id="subText" readonly aria-label="Code d’abonnement"></textarea>
+          <button class="secondary" id="subCopy">Copier le code</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Quand les alertes partent</h2>
+        <p><strong>Signal confirmé</strong> : à la première mise à jour après la clôture US, vers 22:20 heure de Paris, parfois jusqu’à 30 min plus tard selon la charge de GitHub. Par push et par e-mail.</p>
+        <p><strong>Pré-alerte</strong> : dans la dernière heure de séance, si le signal se formerait à la clôture au cours actuel. Elle n’est pas une confirmation.</p>
+        <p>Règle identique à ton indicateur TradingView : deux clôtures consécutives du même côté de la 200 SMA, clôture dans le sens du croisement, un seul signal par changement de tendance.</p>
+      </div>
+      <div class="card">
+        <h2>Clé d’alerte</h2>
+        <p>À faire une seule fois, à l’installation. Génère la clé, colle-la dans le secret GitHub <strong>VAPID_PRIVATE_KEY</strong>, puis relance la mise à jour. Elle est créée sur ce téléphone et n’est envoyée nulle part.</p>
+        <button class="secondary" id="keyBtn">Générer la clé</button>
+        <div id="keyBox" hidden>
+          <textarea id="keyText" readonly aria-label="Clé privée" style="min-height:52px"></textarea>
+          <button class="secondary" id="keyCopy">Copier la clé</button>
+        </div>
+      </div>
+      <p class="note">Données Yahoo Finance, en différé, usage personnel. Graphique : TradingView Lightweight Charts, licence Apache 2.0, <a href="vendor/lightweight-charts-LICENSE.txt" style="color:inherit">voir la licence</a>.</p>
+    </div>
+  </section>
+
+  <nav class="tabs" aria-label="Navigation">
+    <button data-go="liste" aria-label="Liste"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6M9 13h6M9 17h4"/></svg>Liste</button>
+    <button data-go="graph" aria-label="Graphique"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 14l3-3 3 2 4-5"/></svg>Graphique</button>
+    <button data-go="alertes" aria-label="Alertes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 2h16zM10 20a2 2 0 0 0 4 0"/></svg>Alertes</button>
+  </nav>
+</div>
+
+<script src="vendor/lightweight-charts-5.2.1.js"></script>
+<script>
+"use strict";
+const LWC = window.LightweightCharts;
+const $ = (id) => document.getElementById(id);
+const state = { meta: null, cur: null, data: {}, tf: "1A", candles: false, log: false };
+
+/* ---------- Formatting: space thousands, point decimals, DD/MM/YYYY ---------- */
+function fmt(x, dp) {
+  if (x == null || !isFinite(x)) return "–";
+  const neg = x < 0, s = Math.abs(x).toFixed(dp);
+  const [i, d] = s.split(".");
+  const ii = i.replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+  return (neg ? "−" : "") + ii + (d ? "." + d : "");
+}
+const sgn = (x, dp) => (x > 0 ? "+" : "") + fmt(x, dp);
+const pct = (x) => sgn(x, 2) + "\u00a0%";
+const fdate = (iso) => { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
+function fdatetime(iso) {
+  const t = new Date(iso), p = (n) => String(n).padStart(2, "0");
+  return `${p(t.getDate())}/${p(t.getMonth() + 1)}/${t.getFullYear()} ${p(t.getHours())}:${p(t.getMinutes())}`;
+}
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function alpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+}
+
+/* ---------- Data ---------- */
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function loadMeta() {
+  try {
+    state.meta = await getJSON("data/summary.json");
+  } catch (e) {
+    state.meta = null;
+  }
+}
+async function loadSymbol(file) {
+  if (!state.data[file]) state.data[file] = await getJSON(`data/sym/${file}.json`);
+  return state.data[file];
+}
+
+/* ---------- Custom series: close/SMA fill + signal bands (bgcolor) ---------- */
+class BandRenderer {
+  constructor() { this._d = null; this._o = null; }
+  update(d, o) { this._d = d; this._o = o; }
+  draw(target, toY) {
+    const d = this._d, o = this._o;
+    if (!d || !d.visibleRange || !d.bars.length) return;
+    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio: hr, verticalPixelRatio: vr, bitmapSize }) => {
+      const from = Math.max(0, d.visibleRange.from - 1), to = Math.min(d.bars.length, d.visibleRange.to + 1);
+      const bw = Math.max(d.barSpacing * hr, 2 * hr);
+      for (let i = from; i < to; i++) {
+        const b = d.bars[i], v = b.originalData;
+        if (v.ev) {
+          ctx.fillStyle = v.ev > 0 ? o.buyBand : o.sellBand;
+          ctx.fillRect(Math.round(b.x * hr - bw / 2), 0, Math.ceil(bw), bitmapSize.height);
+        }
+        if (!o.showFill || i === 0) continue;
+        const p = d.bars[i - 1], pv = p.originalData;
+        if (pv.sma == null || v.sma == null) continue;
+        const x0 = p.x * hr, x1 = b.x * hr;
+        ctx.beginPath();
+        ctx.moveTo(x0, toY(pv.close) * vr); ctx.lineTo(x1, toY(v.close) * vr);
+        ctx.lineTo(x1, toY(v.sma) * vr); ctx.lineTo(x0, toY(pv.sma) * vr);
+        ctx.closePath();
+        ctx.fillStyle = v.close >= v.sma ? o.upFill : o.downFill;
+        ctx.fill();
+      }
+    });
+  }
+}
+class BandSeries {
+  constructor() { this._r = new BandRenderer(); }
+  priceValueBuilder(p) { return p.sma == null ? [p.close] : [p.sma, p.close]; }
+  isWhitespace(p) { return p.close === undefined; }
+  renderer() { return this._r; }
+  update(d, o) { this._r.update(d, o); }
+  defaultOptions() {
+    return { ...LWC.customSeriesDefaultOptions, upFill: "rgba(0,200,0,.2)", downFill: "rgba(220,0,0,.2)",
+      buyBand: "rgba(0,160,0,.5)", sellBand: "rgba(220,0,0,.5)", showFill: true };
+  }
+}
+
+/* ---------- Chart ---------- */
+let chart, band, smaS, closeS, candleS, markClose, markCandle, rows = [], dp = 2;
+function theme() {
+  return { bg: css("--bg"), text: css("--muted"), grid: css("--chart-grid"), line: css("--line"),
+    up: css("--up"), down: css("--down") };
+}
+function buildChart() {
+  const t = theme();
+  chart = LWC.createChart($("chart"), {
+    autoSize: true,
+    layout: { background: { type: "solid", color: t.bg }, textColor: t.text, fontSize: 11, attributionLogo: true,
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" },
+    grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } },
+    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.06 } },
+    timeScale: { borderVisible: false, rightOffset: 4, minBarSpacing: 0.2 },
+    crosshair: { mode: LWC.CrosshairMode.Normal },
+    localization: { locale: "fr-FR", dateFormat: "dd/MM/yyyy", priceFormatter: (p) => fmt(p, dp) },
+  });
+  band = chart.addCustomSeries(new BandSeries(), { priceLineVisible: false, lastValueVisible: false });
+  smaS = chart.addSeries(LWC.LineSeries, { lineWidth: 4, priceLineVisible: false, crosshairMarkerVisible: false,
+    lastValueVisible: true, title: "SMA 200" });
+  closeS = chart.addSeries(LWC.LineSeries, { lineWidth: 2, priceLineVisible: true, priceLineStyle: 2 });
+  candleS = chart.addSeries(LWC.CandlestickSeries, { visible: false, borderVisible: false });
+  markClose = LWC.createSeriesMarkers(closeS, []);
+  markCandle = LWC.createSeriesMarkers(candleS, []);
+  chart.subscribeCrosshairMove((p) => legend(p && p.time ? p.time : null));
+  styleSeries();
+}
+function styleSeries() {
+  const t = theme();
+  chart.applyOptions({ layout: { background: { type: "solid", color: t.bg }, textColor: t.text },
+    grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } } });
+  band.applyOptions({ upFill: alpha(t.up, .22), downFill: alpha(t.down, .22), buyBand: alpha(t.up, .5),
+    sellBand: alpha(t.down, .5), showFill: !state.candles });
+  candleS.applyOptions({ upColor: t.up, downColor: t.down, wickUpColor: t.up, wickDownColor: t.down });
+  closeS.applyOptions({ visible: !state.candles });
+  candleS.applyOptions({ visible: state.candles });
+  chart.priceScale("right").applyOptions({ mode: state.log ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal });
+  if (rows.length) setSeriesData(false);
+}
+function setSeriesData(resetRange) {
+  const t = theme(), pf = { type: "price", precision: dp, minMove: Math.pow(10, -dp) };
+  const closes = [], smas = [], bands = [], candles = [], marks = [];
+  rows.forEach((r, i) => {
+    const [time, o, h, l, c, s, ev] = r, pc = i ? rows[i - 1][4] : c, ps = i ? rows[i - 1][5] : s;
+    closes.push({ time, value: c, color: c >= pc ? t.up : t.down });
+    if (s != null) smas.push({ time, value: s, color: alpha(s >= (ps ?? s) ? t.up : t.down, .35) });
+    else smas.push({ time });
+    bands.push({ time, close: c, sma: s, ev });
+    candles.push({ time, open: o, high: h, low: l, close: c });
+    if (ev) marks.push({ time, position: ev > 0 ? "belowBar" : "aboveBar", shape: ev > 0 ? "arrowUp" : "arrowDown",
+      color: ev > 0 ? t.up : t.down, text: ev > 0 ? "Achat" : "Vente", size: 1 });
+  });
+  for (const s of [closeS, smaS, candleS]) s.applyOptions({ priceFormat: pf });
+  band.setData(bands); smaS.setData(smas); closeS.setData(closes); candleS.setData(candles);
+  markClose.setMarkers(marks); markCandle.setMarkers(marks);
+  if (resetRange) applyTf();
+  legend(null);
+}
+function applyTf() {
+  if (!rows.length) return;
+  const last = new Date(rows[rows.length - 1][0]);
+  const months = { "1M": 1, "3M": 3, "6M": 6, "1A": 12, "5A": 60 }[state.tf];
+  let from = 0;
+  if (months) {
+    const cut = new Date(last); cut.setMonth(cut.getMonth() - months);
+    const iso = cut.toISOString().slice(0, 10);
+    from = rows.findIndex((r) => r[0] >= iso);
+  }
+  chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, from), to: rows.length - 1 + 4 });
+  document.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tf === state.tf));
+}
+function legend(time) {
+  if (!rows.length) return;
+  let r = rows[rows.length - 1];
+  if (time) { const f = rows.find((x) => x[0] === time); if (f) r = f; }
+  const [d, o, h, l, c, s] = r;
+  $("legend").innerHTML =
+    `<span><b>${fdate(d)}</b></span><span>O <b>${fmt(o, dp)}</b></span><span>H <b>${fmt(h, dp)}</b></span>` +
+    `<span>B <b>${fmt(l, dp)}</b></span><span>C <b>${fmt(c, dp)}</b></span>` +
+    `<span>SMA 200 <b>${s == null ? "–" : fmt(s, dp)}</b></span>`;
+}
+
+/* ---------- Chart header ---------- */
+function renderQuote(s) {
+  $("qId").textContent = s.id;
+  $("qName").textContent = s.name;
+  $("qPrice").textContent = fmt(s.last, s.dp);
+  const cls = s.chg >= 0 ? "up" : "down";
+  $("qChg").className = "chg " + cls;
+  $("qChg").textContent = `${sgn(s.chg, s.dp)} (${pct(s.chgPct)})`;
+  const tag = s.stale ? "Données non actualisées" : s.provisional ? "Séance en cours" : "";
+  $("qTag").hidden = !tag; $("qTag").textContent = tag;
+  const tr = $("trend");
+  if (s.sma == null) { tr.hidden = true; return; }
+  tr.hidden = false;
+  tr.className = "trend " + (s.above ? "up" : "down");
+  $("tHead").textContent = s.above ? "Au-dessus de la 200 SMA" : "Sous la 200 SMA";
+  const e = s.lastEvent;
+  let sub = `SMA ${fmt(s.sma, s.dp)}, pente ${s.smaUp ? "haussière" : "baissière"}`;
+  if (e) sub = `Dernier signal : ${e.type === "BUY" ? "achat" : "vente"} le ${fdate(e.date)}${e.provisional ? " (non confirmé)" : ""}. ` + sub;
+  $("tSub").textContent = sub;
+  $("tDist").textContent = pct(s.distPct);
+  $("tDist").className = "dist " + (s.above ? "up" : "down");
+}
+async function openChart(file, keepRange) {
+  const m = state.meta;
+  const s = Object.values(m.symbols).find((x) => x.file === file) || m.symbols[m.alertSymbol];
+  state.cur = s.file;
+  renderQuote(s);
+  try {
+    const d = await loadSymbol(s.file);
+    if (state.cur !== s.file) return;
+    rows = d.rows; dp = d.dp;
+    chart.applyOptions({ localization: { priceFormatter: (p) => fmt(p, dp) } });
+    setSeriesData(!keepRange);
+  } catch (e) {
+    rows = []; $("legend").textContent = "Historique indisponible pour ce symbole.";
+  }
+}
+
+/* ---------- Watchlist ---------- */
+function renderList() {
+  const m = state.meta, el = $("list");
+  $("updated").textContent = "Mis à jour le " + fdatetime(m.generated);
+  const recent = (e) => e && (Date.now() - new Date(e.date)) / 864e5 < 8;
+  let html = "";
+  for (const sec of m.sections) {
+    html += `<div class="sec">${esc(sec.title)}</div>`;
+    for (const id of sec.ids) {
+      const s = m.symbols[id];
+      const dir = s.sma == null ? "" : s.above ? "up" : "down";
+      const chg = s.chg >= 0 ? "up" : "down";
+      const sig = recent(s.lastEvent)
+        ? `<span class="sig" style="background:var(--${s.lastEvent.type === "BUY" ? "up" : "down"})" title="Signal récent"></span>` : "";
+      html += `<button class="row" data-file="${esc(s.file)}">
+        <span class="strip ${dir}"></span>
+        <span class="txt"><span class="id">${esc(s.id)}${sig}</span><span class="nm">${esc(s.name)}</span></span>
+        <span class="pill ${dir}">${s.distPct == null ? "" : pct(s.distPct)}</span>
+        <span class="px"><b>${fmt(s.last, s.dp)}</b><span class="${chg}">${pct(s.chgPct)}</span></span>
+      </button>`;
+    }
+  }
+  if (m.missing && m.missing.length)
+    html += `<p class="note">Indisponibles chez Yahoo Finance : ${m.missing.map(esc).join(", ")}. Modifie leur code dans config/symbols.json si besoin.</p>`;
+  html += `<p class="note">La pastille indique l’écart du cours à sa 200 SMA : verte au-dessus, rouge en dessous. Le point coloré signale un croisement dans les 7 derniers jours.</p>`;
+  el.innerHTML = html;
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ---------- Navigation ---------- */
+function route() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  const view = h === "liste" ? "list" : h === "alertes" ? "alerts" : "chart";
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === "v-" + view));
+  const tab = { list: "liste", chart: "graph", alerts: "alertes" }[view];
+  document.querySelectorAll("nav.tabs button").forEach((b) =>
+    b.dataset.go === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  if (!state.meta) return;
+  if (view === "chart") {
+    const file = h && h !== "graph" ? h : state.cur || state.meta.symbols[state.meta.alertSymbol]?.file;
+    if (file !== state.cur || !rows.length) openChart(file);
+  }
+  if (view === "alerts") refreshPush();
+}
+document.querySelector("nav.tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  location.hash = b.dataset.go === "graph" ? (state.cur || "graph") : b.dataset.go;
+});
+$("list").addEventListener("click", (e) => {
+  const b = e.target.closest(".row"); if (b) location.hash = b.dataset.file;
+});
+$("symBtn").addEventListener("click", () => (location.hash = "liste"));
+document.querySelectorAll("[data-tf]").forEach((b) => b.addEventListener("click", () => { state.tf = b.dataset.tf; applyTf(); }));
+$("modeBtn").addEventListener("click", (e) => { state.candles = !state.candles; e.currentTarget.setAttribute("aria-pressed", state.candles); styleSeries(); });
+$("logBtn").addEventListener("click", (e) => { state.log = !state.log; e.currentTarget.setAttribute("aria-pressed", state.log); styleSeries(); });
+window.addEventListener("hashchange", route);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => chart && styleSeries());
+
+/* ---------- Push notifications ---------- */
+const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+function b64ToBytes(b64) {
+  const s = atob((b64 + "=".repeat((4 - b64.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+}
+async function refreshPush() {
+  const st = $("pushStatus"), help = $("pushHelp"), btn = $("pushBtn");
+  btn.disabled = false;
+  if (!pushSupported) {
+    st.textContent = "Notifications non disponibles dans ce navigateur.";
+    help.textContent = isIOS && !standalone
+      ? "Sur iPhone : bouton Partager, puis Sur l’écran d’accueil. Ouvre ensuite l’app depuis son icône et reviens ici."
+      : "Utilise Chrome sur Android, ou Safari sur iPhone avec l’app ajoutée à l’écran d’accueil.";
+    btn.disabled = true; return;
+  }
+  if (!state.meta || !state.meta.pushKey) {
+    st.textContent = "Clé d’alerte manquante.";
+    help.textContent = "Génère la clé plus bas, ajoute-la sur GitHub, relance la mise à jour, puis reviens ici.";
+    btn.disabled = true; return;
+  }
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg && await reg.pushManager.getSubscription();
+  if (sub && Notification.permission === "granted") {
+    st.textContent = "Activées sur ce téléphone.";
+    help.textContent = "Si tu ne l’as pas encore fait, copie le code ci-dessous dans GitHub.";
+    btn.textContent = "Renouveler l’abonnement";
+    showSub(sub);
+  } else if (Notification.permission === "denied") {
+    st.textContent = "Notifications bloquées.";
+    help.textContent = "Autorise les notifications pour ce site dans les réglages du navigateur, puis reviens ici.";
+    btn.disabled = true;
+  } else {
+    st.textContent = "Désactivées sur ce téléphone.";
+    help.textContent = isIOS && !standalone ? "Sur iPhone, ajoute d’abord l’app à l’écran d’accueil et ouvre-la depuis l’icône." : "";
+    btn.textContent = "Activer les notifications";
+  }
+}
+function showSub(sub) {
+  $("subBox").hidden = false;
+  $("subText").value = JSON.stringify(sub.toJSON());
+}
+$("pushBtn").addEventListener("click", async () => {
+  const btn = $("pushBtn"); btn.disabled = true;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { await refreshPush(); return; }
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    const old = await reg.pushManager.getSubscription();
+    if (old) await old.unsubscribe();
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(state.meta.pushKey) });
+    showSub(sub);
+    $("pushStatus").textContent = "Activées sur ce téléphone.";
+    $("pushHelp").textContent = "Dernière étape : copie le code ci-dessous dans GitHub.";
+  } catch (e) {
+    $("pushStatus").textContent = "Activation impossible.";
+    $("pushHelp").textContent = "Vérifie que la clé sur GitHub correspond à celle générée ici, puis réessaie.";
+  } finally { btn.disabled = false; }
+});
+async function copy(id, btn) {
+  const t = $(id); t.select();
+  try { await navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); }
+  const old = btn.textContent; btn.textContent = "Copié"; setTimeout(() => (btn.textContent = old), 1500);
+}
+$("subCopy").addEventListener("click", (e) => copy("subText", e.currentTarget));
+$("keyCopy").addEventListener("click", (e) => copy("keyText", e.currentTarget));
+$("keyBtn").addEventListener("click", async () => {
+  try {
+    const k = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
+    const jwk = await crypto.subtle.exportKey("jwk", k.privateKey);
+    $("keyText").value = jwk.d; $("keyBox").hidden = false;
+  } catch (e) {
+    $("keyText").value = "Génération impossible : ouvre la page en https."; $("keyBox").hidden = false;
+  }
+});
+
+/* ---------- Start ---------- */
+(async function start() {
+  buildChart();
+  await loadMeta();
+  if (!state.meta) {
+    const msg = `<div class="empty"><strong>Aucune donnée pour l’instant.</strong>La première mise à jour n’a pas encore tourné. Sur GitHub, onglet Actions, lance « Mise à jour des données », puis recharge cette page.</div>`;
+    $("list").innerHTML = msg;
+    $("legend").textContent = "Aucune donnée pour l’instant.";
+    route(); return;
+  }
+  renderList();
+  route();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  setInterval(async () => {          // refresh summary every 10 min while open
+    await loadMeta(); if (!state.meta) return;
+    state.data = {}; renderList();
+    if (state.cur) openChart(state.cur, true);
+  }, 600000);
+})();
+</script>
+</body>
+</html>
