@@ -41,8 +41,22 @@ SESSIONS = {
 }
 
 
+REPORT: list[str] = []
+
+
 def log(msg: str) -> None:
     print(msg, flush=True)
+    if msg.startswith(("Push", "E-mail", "Test alert", "Alerts", "Pre-alert")):
+        REPORT.append(msg)
+
+
+def write_summary(extra: str) -> None:
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    lines = ["### Alertes", ""] + [f"- {m}" for m in REPORT] + ["", extra]
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 def safe_name(symbol_id: str) -> str:
@@ -232,33 +246,52 @@ def fmt_date(iso: str) -> str:
 def send_email(subject: str, body: str) -> bool:
     host = os.environ.get("SMTP_HOST", "").strip()
     user = os.environ.get("SMTP_USER", "").strip()
-    pwd = os.environ.get("SMTP_PASSWORD", "")
+    pwd = os.environ.get("SMTP_PASSWORD", "").strip()
     to = os.environ.get("ALERT_EMAIL_TO", "").strip()
-    if not (host and user and pwd and to):
-        log("E-mail: not configured, skipped")
+    missing = [n for n, v in (("SMTP_HOST", host), ("SMTP_USER", user), ("SMTP_PASSWORD", pwd), ("ALERT_EMAIL_TO", to)) if not v]
+    if missing:
+        log(f"E-mail: not configured, missing secret(s) {', '.join(missing)}")
         return False
-    port = int(os.environ.get("SMTP_PORT", "465") or 465)
+    if "gmail" in host.lower():
+        pwd = pwd.replace(" ", "")  # Gmail shows app passwords in groups of four
+    try:
+        port = int(re.sub(r"\D", "", os.environ.get("SMTP_PORT", "")) or 465)
+    except ValueError:
+        port = 465
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = user
     msg["To"] = to
     msg.set_content(body)
     ctx = ssl.create_default_context()
-    try:
-        if port == 465:
-            with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as s:
+    # Try the configured port first, then the other standard encrypted mode.
+    attempts = [port] + [p for p in (465, 587) if p != port]
+    for p in attempts:
+        mode = "SSL" if p == 465 else "STARTTLS"
+        stage = "connect"
+        try:
+            if mode == "SSL":
+                s = smtplib.SMTP_SSL(host, p, context=ctx, timeout=30)
+            else:
+                s = smtplib.SMTP(host, p, timeout=30)
+            with s:
+                if mode == "STARTTLS":
+                    stage = "starttls"
+                    s.ehlo()
+                    s.starttls(context=ctx)  # never send credentials in plaintext
+                    s.ehlo()
+                stage = "login"
                 s.login(user, pwd)
+                stage = "send"
                 s.send_message(msg)
-        else:
-            with smtplib.SMTP(host, port, timeout=30) as s:
-                s.starttls(context=ctx)  # refuse plaintext
-                s.login(user, pwd)
-                s.send_message(msg)
-        log("E-mail: sent")
-        return True
-    except Exception as exc:
-        log(f"E-mail: failed ({type(exc).__name__})")
-        return False
+            log(f"E-mail: sent (port {p}, {mode})")
+            return True
+        except smtplib.SMTPAuthenticationError:
+            log(f"E-mail: login refused on port {p} ({mode}): check SMTP_USER and the app password in SMTP_PASSWORD")
+            return False  # another port will not fix wrong credentials
+        except Exception as exc:
+            log(f"E-mail: failed on port {p} ({mode}) at step '{stage}' ({type(exc).__name__})")
+    return False
 
 
 def vapid_public_key() -> str | None:
@@ -282,7 +315,8 @@ def send_push(title: str, body: str, url: str) -> tuple[bool, bool]:
     key = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
     raw = os.environ.get("WEBPUSH_SUBSCRIPTION", "").strip()
     if not (key and raw):
-        log("Push: not configured, skipped")
+        miss = [n for n, v in (("VAPID_PRIVATE_KEY", key), ("WEBPUSH_SUBSCRIPTION", raw)) if not v]
+        log(f"Push: not configured, missing secret(s) {', '.join(miss)}")
         return False, False
     try:
         subs = json.loads(raw)
@@ -444,6 +478,9 @@ def main() -> int:
     state["_heartbeat"] = now_utc.strftime("%Y-%m")  # monthly commit keeps the schedule active
     STATE.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     log(f"Done: {len(summary)} symbols, {len(missing)} unavailable")
+    if not REPORT:
+        REPORT.append("No alert to send this run")
+    write_summary(f"Symboles : {len(summary)} à jour" + (f", indisponibles : {', '.join(missing)}" if missing else ""))
     return 0 if summary else 1
 
 
