@@ -1,5 +1,5 @@
 {
-  "alert_symbol": "SPX",
+  "alert_symbols": ["SPX"],
   "pre_alert_minutes": 75,
   "history_years": 20,
   "sections": [
