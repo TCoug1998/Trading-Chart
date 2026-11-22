@@ -42,10 +42,18 @@ SESSIONS = {
 
 
 REPORT: list[str] = []
+LAST = {"push": "", "email": ""}       # last log line per channel, for the health report
+HISTORY: list[dict] = []               # alerts sent during this run
+HEALTH: dict = {}                      # latest status per channel
+NOW_UTC = datetime.now(timezone.utc)
 
 
 def log(msg: str) -> None:
     print(msg, flush=True)
+    if msg.startswith("Push"):
+        LAST["push"] = msg
+    elif msg.startswith("E-mail"):
+        LAST["email"] = msg
     if msg.startswith(("Push", "E-mail", "Test alert", "Alerts", "Pre-alert")):
         REPORT.append(msg)
 
@@ -355,13 +363,34 @@ def send_push(title: str, body: str, url: str) -> tuple[bool, bool]:
     return sent, expired
 
 
-def notify(title: str, body: str, url: str) -> bool:
+def _status(ok: bool, channel: str) -> str:
+    if ok:
+        return "ok"
+    return "off" if "not configured" in LAST[channel] else "fail"
+
+
+def notify(title: str, body: str, url: str, sym: str = "", kind: str = "") -> bool:
+    """Send by push then e-mail. A failing channel is reported through the other one."""
+    LAST["push"] = LAST["email"] = ""
     pushed, expired = send_push(title, body, url)
+    push_st = _status(pushed, "push")
     extra = ""
     if expired:
         extra = ("\n\nLes notifications push de ton téléphone ont expiré. Ouvre l'app, "
                  "onglet Alertes, réactive-les et remplace le secret WEBPUSH_SUBSCRIPTION.")
+    elif push_st == "fail":
+        extra = "\n\nAttention : la notification push n'a pas pu être envoyée. Détail dans l'onglet Alertes de l'app."
     mailed = send_email(title, body + f"\n\n{url}" + extra)
+    mail_st = _status(mailed, "email")
+    if mail_st == "fail" and pushed:
+        send_push("Alertes : e-mail en échec", "L'e-mail d'alerte n'a pas pu être envoyé. Vérifie l'onglet Alertes de l'app.", url)
+    stamp = NOW_UTC.isoformat(timespec="seconds")
+    for ch, st in (("push", push_st), ("email", mail_st)):
+        if st != "off":
+            HEALTH[ch] = {"status": st, "t": stamp, "detail": LAST[ch][:160] if st == "fail" else ""}
+        else:
+            HEALTH[ch] = {"status": "off", "t": stamp, "detail": ""}
+    HISTORY.append({"t": stamp, "sym": sym, "kind": kind, "title": title, "push": push_st, "email": mail_st})
     return pushed or mailed
 
 
@@ -401,7 +430,8 @@ def process_alerts(summary: dict, data: dict, cfg: dict, state: dict, now_utc: d
                 lines.append(f"{sid} est {trend} de sa 200 SMA. {describe(s)}")
             else:
                 lines.append(f"{sid} : données indisponibles.")
-        ok = notify("Test d'alerte", "Les alertes fonctionnent pour : " + ", ".join(ids) + ".\n" + "\n".join(lines), url)
+        ok = notify("Test d'alerte", "Les alertes fonctionnent pour : " + ", ".join(ids) + ".\n" + "\n".join(lines), url,
+                    ",".join(ids), "TEST")
         log(f"Test alert: {'delivered' if ok else 'not delivered'}")
     for sid in ids:
         process_symbol(sid, summary, data, cfg, state, now_utc, url)
@@ -412,6 +442,13 @@ def process_symbol(sid: str, summary: dict, data: dict, cfg: dict, state: dict, 
     d = data.get(sid)
     if not s or not d or s.get("stale") or s.get("sma") is None:
         log(f"Alerts: {sid} data unavailable this run, no alert evaluated")
+        st = state.setdefault(sid, {})
+        today = NOW_UTC.date().isoformat()
+        if st.get("data_alert") != today:      # at most one warning per day
+            notify(f"{sid} : données indisponibles",
+                   f"Les cours de {sid} n'ont pas pu être mis à jour. Les alertes 200 SMA de {sid} sont suspendues "
+                   "jusqu'au retour des données.", url, sid, "DATA")
+            st["data_alert"] = today
         return
     sym_cfg = next(x for sec in cfg["sections"] for x in sec["symbols"] if x["id"] == sid)
     rows = d["rows"]
@@ -429,10 +466,28 @@ def process_symbol(sid: str, summary: dict, data: dict, cfg: dict, state: dict, 
                 sentence = ("repasse au-dessus de sa 200 SMA" if last_evt[1] > 0 else "casse sa 200 SMA")
                 body = (f"Signal {kind} confirmé à la clôture du {fmt_date(last_evt[0])} : {sid} {sentence}. "
                         f"{describe(s)}")
-                notify(f"{sid} : signal {kind}", body, url)
+                notify(f"{sid} : signal {kind}", body, url, sid, "BUY" if last_evt[1] > 0 else "SELL")
             else:
                 log(f"Alerts: {sid} older signal recorded without alert")
             st["last_event"] = key
+
+    # Proximity: confirmed close within X % of the 200 SMA (one alert per approach)
+    pct_zone = float(cfg.get("proximity_pct", 2))
+    last_c = confirmed[-1] if confirmed else None
+    if pct_zone > 0 and last_c and last_c[5]:
+        dist = (last_c[4] / last_c[5] - 1) * 100
+        if abs(dist) <= pct_zone:
+            if not st.get("near"):
+                signal_today = last_evt is not None and last_evt[0] == last_c[0]
+                if not signal_today:   # a crossing signal already covers this close
+                    side, nxt = ("au-dessus", "VENTE si la baisse continue") if dist >= 0 else ("en dessous", "ACHAT si la hausse continue")
+                    body = (f"{sid} clôture à {abs(dist):.2f} % {side} de sa 200 SMA le {fmt_date(last_c[0])} "
+                            f"({fmt_num(last_c[4], s['dp'])} contre {fmt_num(last_c[5], s['dp'])}). "
+                            f"Un signal {nxt} devient possible dans les prochaines séances.")
+                    notify(f"{sid} : proche de la 200 SMA", body, url, sid, "NEAR")
+                st["near"] = True
+        elif abs(dist) > pct_zone * 1.25:     # leave the zone clearly before re-arming
+            st["near"] = False
 
     # Pre-alert during the last part of the session
     if d["provisional"] and rows[-1][6]:
@@ -441,7 +496,7 @@ def process_symbol(sid: str, summary: dict, data: dict, cfg: dict, state: dict, 
             kind = "ACHAT" if rows[-1][6] > 0 else "VENTE"
             body = (f"Signal {kind} probable à la clôture de ce soir (dans {int(minutes)} min) si le cours tient. "
                     f"{describe(s)} Non confirmé tant que la séance n'est pas close.")
-            notify(f"{sid} : pré-alerte {kind}", body, url)
+            notify(f"{sid} : pré-alerte {kind}", body, url, sid, "PRE")
             st["pre_alert"] = rows[-1][0]
 
 
@@ -499,11 +554,16 @@ def main() -> int:
         "alertSymbol": (alert_ids(cfg) or ["SPX"])[0],
         "alertSymbols": alert_ids(cfg),
         "repo": os.environ.get("GITHUB_REPOSITORY", ""),
+        "proximityPct": cfg.get("proximity_pct", 2),
+        "health": {**state.get("_health", {}), **HEALTH},
+        "history": list(reversed((state.get("_history", []) + HISTORY)[-20:])),
         "missing": missing,
         "sections": [{"title": s["title"], "ids": [x["id"] for x in s["symbols"] if x["id"] in summary]} for s in cfg["sections"]],
         "symbols": summary,
     }
     (SITE / "data" / "summary.json").write_text(json.dumps(meta, separators=(",", ":")), encoding="utf-8")
+    state["_history"] = (state.get("_history", []) + HISTORY)[-50:]
+    state.setdefault("_health", {}).update(HEALTH)
     state["_heartbeat"] = now_utc.strftime("%Y-%m")  # monthly commit keeps the schedule active
     STATE.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     log(f"Done: {len(summary)} symbols, {len(missing)} unavailable")
