@@ -64,8 +64,6 @@ nav.tabs svg { width: 24px; height: 24px; }
   .side { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
   #v-chart { display: flex; }
   nav.tabs button[data-go="graph"] { display: none; }
-  body.fs .side { display: none; }
-  body.fs .app { grid-template-columns: 1fr; }
 }
 
 /* ---------- Chart ---------- */
@@ -117,8 +115,6 @@ nav.tabs svg { width: 24px; height: 24px; }
 .tbar .chip[aria-pressed="true"] { color: var(--text); font-weight: 600; background: var(--panel); }
 .tbar .chip svg { width: 16px; height: 16px; }
 .tbar .sep { width: 1px; height: 18px; background: var(--line); flex: none; margin: 0 4px; }
-.tbar .push { margin-left: auto; }
-@media (max-width: 999px) { .tbar .push span { display: none; } }
 
 /* ---------- Watchlist ---------- */
 header.bar { padding: 12px 14px 6px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -150,9 +146,6 @@ header.bar small { color: var(--muted); font-size: 12px; display: block; }
 .row .txt { min-width: 0; }
 .row .id { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 7px; }
 .row .nm { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.smatag { font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
-.smatag.up { background: var(--up-soft); } .smatag.down { background: var(--down-soft); }
-.row .sig { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
 .row .px { text-align: right; white-space: nowrap; }
 .row .px b { font-weight: 600; display: block; font-size: 15px; }
 .row .px span { font-size: 13px; }
@@ -168,6 +161,14 @@ header.bar small { color: var(--muted); font-size: 12px; display: block; }
 @media (hover: hover) { .row:hover { background: var(--panel); } }
 
 /* Alerts view */
+.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: 10px 0; }
+.picks label {
+  display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px;
+  font-size: 14px; font-weight: 600; cursor: pointer; background: var(--bg);
+}
+.picks label:has(input:checked) { border-color: var(--accent); background: var(--panel); }
+.picks input { width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
+.linkbtn { display: block; text-align: center; text-decoration: none; color: var(--text); box-sizing: border-box; }
 .card { margin: 10px 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
 .card h2 { font-size: 17px; margin: 0 0 6px; }
 .card p { margin: 6px 0; color: var(--muted); font-size: 14px; }
@@ -215,7 +216,6 @@ textarea {
       <button class="chip" data-tf="MAX">Max</button>
       <span class="sep"></span>
       <button class="chip" id="modeBtn" aria-pressed="false">Bougies</button>
-      <button class="chip push" id="fsBtn" aria-label="Plein écran" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Plein écran</span></button>
     </div>
   </section>
 
@@ -244,8 +244,17 @@ textarea {
         </div>
       </div>
       <div class="card">
+        <h2>Symboles avec alerte 200 SMA</h2>
+        <p id="alertNow"></p>
+        <div class="picks" id="picks"></div>
+        <p>Pour appliquer ton choix : copie la ligne ci-dessous, ouvre le fichier sur GitHub, remplace la ligne qui commence par <strong>"alert_symbols"</strong>, puis <strong>Commit changes</strong>. L’app se met à jour en 2 à 3 minutes.</p>
+        <textarea id="pickText" readonly aria-label="Ligne de configuration" style="min-height:44px"></textarea>
+        <button class="secondary" id="pickCopy">Copier la ligne</button>
+        <a class="secondary linkbtn" id="pickLink" target="_blank" rel="noopener noreferrer" hidden>Ouvrir le fichier sur GitHub</a>
+      </div>
+      <div class="card">
         <h2>Quand les alertes partent</h2>
-        <p><strong>Signal confirmé</strong> : à la première mise à jour après la clôture US, vers 22:20 heure de Paris, parfois jusqu’à 30 min plus tard selon la charge de GitHub. Par push et par e-mail.</p>
+        <p><strong>Signal confirmé</strong> : à la première mise à jour après la clôture du marché concerné : vers 22:20 heure de Paris pour les indices et ETF américains, vers 18:20 pour Paris. Parfois jusqu’à 30 min plus tard selon la charge de GitHub. Par push et par e-mail.</p>
         <p><strong>Pré-alerte</strong> : dans la dernière heure de séance, si le signal se formerait à la clôture au cours actuel. Elle n’est pas une confirmation.</p>
         <p>Règle identique à ton indicateur TradingView : deux clôtures consécutives du même côté de la 200 SMA, clôture dans le sens du croisement, un seul signal par changement de tendance.</p>
       </div>
@@ -401,8 +410,10 @@ function styleSeries() {
   band.applyOptions({ visible: state.sma, upFill: alpha(t.up, .22), downFill: alpha(t.down, .22),
     buyBand: alpha(t.up, .5), sellBand: alpha(t.down, .5), showFill: true });
   smaS.applyOptions({ visible: state.sma });
-  candleS.applyOptions({ visible: state.candles, upColor: t.up, downColor: t.down, wickUpColor: t.up, wickDownColor: t.down });
-  closeS.applyOptions({ visible: lineOn });
+  candleS.applyOptions({ visible: state.candles, upColor: t.up, downColor: t.down, wickUpColor: t.up, wickDownColor: t.down,
+    lastValueVisible: !lineOn });
+  closeS.applyOptions({ visible: lineOn, lastValueVisible: true });
+  smaS.applyOptions({ lastValueVisible: true });
   document.body.classList.toggle("sma-off", !state.sma);
   $("eyeBtn").setAttribute("aria-pressed", state.sma);
   $("modeBtn").setAttribute("aria-pressed", state.candles);
@@ -431,10 +442,7 @@ function setSeriesData(resetRange) {
   priceLines = [];
   const pxLine = { price: last[4], color: lastCol, lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: true };
   priceLines.push([closeS, closeS.createPriceLine(pxLine)], [candleS, candleS.createPriceLine(pxLine)]);
-  if (last[5] != null) {
-    const smaCol = last[5] >= (prev[5] ?? last[5]) ? t.up : t.down;
-    priceLines.push([smaS, smaS.createPriceLine({ price: last[5], color: smaCol, lineVisible: false, axisLabelVisible: true })]);
-  }
+
   styleSeries();
   if (resetRange) applyTf();
   legend(null);
@@ -562,7 +570,6 @@ function renderList() {
   const m = state.meta, el = $("list");
   $("updated").textContent = "Mis à jour le " + fdatetime(m.generated);
   $("editBtn").textContent = state.editing ? "Terminé" : "Modifier";
-  const recent = (e) => e && (Date.now() - new Date(e.date)) / 864e5 < 8;
   const all = layout.flatMap((s) => s.ids), first = all[0], last = all[all.length - 1];
   let html = "";
   layout.forEach((sec, si) => {
@@ -573,12 +580,8 @@ function renderList() {
     if (closed) return;
     for (const id of sec.ids) {
       const s = m.symbols[id]; if (!s) continue;
-      const dir = s.sma == null ? "" : s.above ? "up" : "down";
-      const tag = s.distPct == null ? "" : `<span class="smatag ${dir}" title="Écart à la 200 SMA">${s.above ? "▲" : "▼"} ${pct(s.distPct)}</span>`;
-      const sig = recent(s.lastEvent)
-        ? `<span class="sig" style="background:var(--${s.lastEvent.type === "BUY" ? "up" : "down"})" title="Croisement récent"></span>` : "";
       const chg = s.chg >= 0 ? "up" : "down";
-      const txt = `<span class="txt"><span class="id">${esc(s.id)}${tag}${sig}</span><span class="nm">${esc(s.name)}</span></span>`;
+      const txt = `<span class="txt"><span class="id">${esc(s.id)}</span><span class="nm">${esc(s.name)}</span></span>`;
       html += state.editing
         ? `<div class="row">${badgeFor(s)}${txt}<span class="mv">
              <button data-mv="${esc(id)}" data-dir="-1" aria-label="Monter ${esc(s.id)}" ${id === first ? "disabled" : ""}>${UP}</button>
@@ -594,7 +597,6 @@ function renderList() {
   } else {
     if (m.missing && m.missing.length)
       html += `<p class="note">Indisponibles chez Yahoo Finance : ${m.missing.map(esc).join(", ")}.</p>`;
-    html += `<p class="note">L’étiquette ▲ ou ▼ donne l’écart du cours à sa 200 SMA. Le point coloré signale un croisement dans les 7 derniers jours.</p>`;
   }
   el.innerHTML = html;
   markCurrentRow();
@@ -641,7 +643,7 @@ function route() {
     const file = view === "chart" && h && h !== "graph" ? h : state.cur || state.meta.symbols[state.meta.alertSymbol]?.file;
     if (file !== state.cur || !rows.length) openChart(file);
   }
-  if (view === "alerts") refreshPush();
+  if (view === "alerts") { refreshPush(); renderPicks(); }
   markCurrentRow();
 }
 document.querySelector("nav.tabs").addEventListener("click", (e) => {
@@ -656,22 +658,32 @@ window.addEventListener("hashchange", route);
 wide.addEventListener("change", route);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => chart && rows.length && setSeriesData(false));
 
-/* ---------- Full screen ---------- */
-const fsOk = document.fullscreenEnabled || document.webkitFullscreenEnabled;
-if (fsOk) $("fsBtn").hidden = false;
-$("fsBtn").addEventListener("click", () => {
-  const d = document;
-  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-  else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
-});
-function onFs() {
-  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  document.body.classList.toggle("fs", on);
-  $("fsBtn").setAttribute("aria-pressed", on);
-  $("fsBtn").querySelector("span").textContent = on ? "Quitter" : "Plein écran";
+/* ---------- Alert symbols: build the config line to paste on GitHub ---------- */
+let picked = null;
+function renderPicks() {
+  const m = state.meta; if (!m) return;
+  const active = m.alertSymbols || [m.alertSymbol];
+  if (!picked) picked = new Set(active);
+  $("alertNow").innerHTML = "Alertes actives : <strong>" + active.map(esc).join(", ") + "</strong>";
+  const ids = layout.flatMap((s) => s.ids);
+  $("picks").innerHTML = ids.map((id) =>
+    `<label><input type="checkbox" value="${esc(id)}" ${picked.has(id) ? "checked" : ""}>${esc(id)}</label>`).join("");
+  pickLine();
+  if (m.repo && /^[\w.-]+\/[\w.-]+$/.test(m.repo)) {
+    $("pickLink").href = `https://github.com/${m.repo}/edit/main/config/symbols.json`;
+    $("pickLink").hidden = false;
+  }
 }
-document.addEventListener("fullscreenchange", onFs);
-document.addEventListener("webkitfullscreenchange", onFs);
+function pickLine() {
+  const ids = layout.flatMap((s) => s.ids).filter((id) => picked.has(id));
+  $("pickText").value = `"alert_symbols": ${JSON.stringify(ids).replace(/,/g, ", ")},`;
+}
+$("picks").addEventListener("change", (e) => {
+  const c = e.target.closest("input"); if (!c) return;
+  c.checked ? picked.add(c.value) : picked.delete(c.value);
+  pickLine();
+});
+$("pickCopy").addEventListener("click", (e) => copy("pickText", e.currentTarget));
 
 /* ---------- Push notifications ---------- */
 const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
