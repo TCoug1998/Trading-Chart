@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#12161f" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -34,6 +34,9 @@
   }
 }
 *, *::before, *::after { box-sizing: inherit; }
+/* Page stays fixed: no pinch or double-tap zoom on the page, only on the chart */
+html, body { touch-action: pan-x pan-y; overscroll-behavior: none; }
+button, a, input, label { touch-action: manipulation; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--text);
@@ -69,7 +72,7 @@ nav.tabs svg { width: 24px; height: 24px; }
 /* ---------- Chart ---------- */
 .up { color: var(--up); } .down { color: var(--down); }
 .chart-wrap { position: relative; flex: 1; min-height: 240px; }
-#chart { position: absolute; inset: 0; }
+#chart { position: absolute; inset: 0; touch-action: none; }
 .wm { position: absolute; left: 10px; bottom: 34px; width: 34px; height: 34px; z-index: 3; pointer-events: none; opacity: .92; }
 .wm svg { width: 100%; height: 100%; display: block; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); }
 .hdr {
@@ -129,7 +132,7 @@ header.bar small { color: var(--muted); font-size: 12px; display: block; }
 .sec.closed svg { transform: rotate(-90deg); }
 .sec-edit { display: flex; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
 .sec-edit input {
-  flex: 1; font: inherit; font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+  flex: 1; font: inherit; font-size: 16px; color: var(--text); background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; padding: 8px 10px;
 }
 .row {
@@ -161,6 +164,17 @@ header.bar small { color: var(--muted); font-size: 12px; display: block; }
 @media (hover: hover) { .row:hover { background: var(--panel); } }
 
 /* Alerts view */
+.health, .hist { list-style: none; margin: 8px 0 0; padding: 0; }
+.health li { display: grid; grid-template-columns: 12px 1fr; gap: 2px 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.health li:first-child { border-top: 0; }
+.health .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: var(--muted); }
+.health .ok .dot { background: var(--up); } .health .bad .dot { background: var(--down); } .health .warn .dot { background: var(--accent); }
+.health small { grid-column: 2; color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.hist li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.hist li:first-child { border-top: 0; }
+.hist .when { color: var(--muted); font-size: 12.5px; }
+.hist .ch { font-size: 12px; margin-left: 6px; }
+#updated.late { color: var(--down); font-weight: 600; }
 .picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: 10px 0; }
 .picks label {
   display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px;
@@ -233,6 +247,10 @@ textarea {
     <header class="bar"><h1>Alertes</h1></header>
     <div class="scroll">
       <div class="card">
+        <h2>État des alertes</h2>
+        <ul class="health" id="health"></ul>
+      </div>
+      <div class="card">
         <h2>Notifications sur ce téléphone</h2>
         <p id="pushStatus" class="status"></p>
         <p id="pushHelp"></p>
@@ -253,8 +271,14 @@ textarea {
         <a class="secondary linkbtn" id="pickLink" target="_blank" rel="noopener noreferrer" hidden>Ouvrir le fichier sur GitHub</a>
       </div>
       <div class="card">
+        <h2>Historique des alertes</h2>
+        <ul class="hist" id="hist"></ul>
+      </div>
+      <div class="card">
         <h2>Quand les alertes partent</h2>
         <p><strong>Signal confirmé</strong> : à la première mise à jour après la clôture du marché concerné : vers 22:20 heure de Paris pour les indices et ETF américains, vers 18:20 pour Paris. Parfois jusqu’à 30 min plus tard selon la charge de GitHub. Par push et par e-mail.</p>
+        <p><strong>Proximité</strong> : quand un symbole choisi clôture à moins de <span id="proxPct">2</span> % de sa 200 SMA, une seule fois par approche.</p>
+        <p><strong>Surveillance</strong> : si les cours d’un symbole choisi ne peuvent plus être récupérés, ou si un canal d’envoi échoue, tu es prévenu par l’autre canal.</p>
         <p><strong>Pré-alerte</strong> : dans la dernière heure de séance, si le signal se formerait à la clôture au cours actuel. Elle n’est pas une confirmation.</p>
         <p>Règle identique à ton indicateur TradingView : deux clôtures consécutives du même côté de la 200 SMA, clôture dans le sens du croisement, un seul signal par changement de tendance.</p>
       </div>
@@ -568,7 +592,9 @@ const UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 const DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
 function renderList() {
   const m = state.meta, el = $("list");
-  $("updated").textContent = "Mis à jour le " + fdatetime(m.generated);
+  const li = lateInfo(m);
+  $("updated").textContent = (li.late ? "⚠ En retard, mis à jour le " : "Mis à jour le ") + fdatetime(m.generated);
+  $("updated").classList.toggle("late", li.late);
   $("editBtn").textContent = state.editing ? "Terminé" : "Modifier";
   const all = layout.flatMap((s) => s.ids), first = all[0], last = all[all.length - 1];
   let html = "";
@@ -643,7 +669,7 @@ function route() {
     const file = view === "chart" && h && h !== "graph" ? h : state.cur || state.meta.symbols[state.meta.alertSymbol]?.file;
     if (file !== state.cur || !rows.length) openChart(file);
   }
-  if (view === "alerts") { refreshPush(); renderPicks(); }
+  if (view === "alerts") { refreshPush(); renderPicks(); renderHealth(); }
   markCurrentRow();
 }
 document.querySelector("nav.tabs").addEventListener("click", (e) => {
@@ -657,6 +683,42 @@ $("eyeBtn").addEventListener("click", () => { state.sma = !state.sma; store.set(
 window.addEventListener("hashchange", route);
 wide.addEventListener("change", route);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => chart && rows.length && setSeriesData(false));
+
+/* ---------- Alert health and history ---------- */
+function lateInfo(m) {
+  const age = (Date.now() - new Date(m.generated)) / 36e5, day = new Date().getUTCDay();
+  const limit = day === 0 || day === 6 ? 13 : 3;      // hourly on weekdays, every 6 h at weekends
+  return { age, late: age > limit };
+}
+function ago(h) { return h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} jours`; }
+function renderHealth() {
+  const m = state.meta; if (!m) return;
+  $("proxPct").textContent = m.proximityPct ?? 2;
+  const items = [], { age, late } = lateInfo(m);
+  items.push(late
+    ? ["bad", "Mise à jour des données en retard", `Dernière mise à jour il y a ${ago(age)}. Sur GitHub, onglet Actions, vérifie la dernière exécution.`]
+    : ["ok", "Mise à jour des données", `Dernière mise à jour il y a ${ago(age)}.`]);
+  const h = m.health || {};
+  for (const [k, label] of [["push", "Notifications push"], ["email", "E-mail"]]) {
+    const c = h[k];
+    if (!c) items.push(["", label, "Aucun envoi pour l’instant. Lance une alerte de test pour vérifier."]);
+    else if (c.status === "ok") items.push(["ok", label, `Dernier envoi réussi le ${fdatetime(c.t)}.`]);
+    else if (c.status === "off") items.push(["warn", label, "Non configuré : secrets GitHub manquants."]);
+    else items.push(["bad", label + " en échec", `Le ${fdatetime(c.t)} : ${c.detail || "erreur inconnue"}`]);
+  }
+  const ids = m.alertSymbols || [m.alertSymbol];
+  const down = ids.filter((id) => !m.symbols[id] || m.symbols[id].stale);
+  items.push(down.length
+    ? ["bad", "Données indisponibles", `Alertes suspendues pour : ${down.join(", ")}.`]
+    : ["ok", "Données des symboles surveillés", `À jour pour : ${ids.join(", ")}.`]);
+  $("health").innerHTML = items.map(([c, t, d]) => `<li class="${c}"><span class="dot"></span><span>${esc(t)}</span><small>${esc(d)}</small></li>`).join("");
+  const icon = (st) => st === "ok" ? "✓" : st === "fail" ? "✗" : "–";
+  const KIND = { BUY: "Signal achat", SELL: "Signal vente", PRE: "Pré-alerte", NEAR: "Proximité 2 %", DATA: "Données", TEST: "Test" };
+  const hist = m.history || [];
+  $("hist").innerHTML = hist.length ? hist.map((x) =>
+    `<li><div>${esc(x.title)}</div><div class="when">${fdatetime(x.t)}<span class="ch">Push ${icon(x.push)}</span><span class="ch">E-mail ${icon(x.email)}</span></div></li>`).join("")
+    : `<li class="when">Aucune alerte envoyée pour l’instant.</li>`;
+}
 
 /* ---------- Alert symbols: build the config line to paste on GitHub ---------- */
 let picked = null;
@@ -763,6 +825,14 @@ $("keyBtn").addEventListener("click", async () => {
     $("keyText").value = "Génération impossible : ouvre la page en https."; $("keyBox").hidden = false;
   }
 });
+
+/* ---------- Page zoom lock (the chart keeps its own pinch and wheel zoom) ---------- */
+for (const ev of ["gesturestart", "gesturechange", "gestureend"])          // Safari pinch on the page
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener("touchmove", (e) => {                           // two-finger pinch outside the chart
+  if (e.touches.length > 1 && !e.target.closest("#chart")) e.preventDefault();
+}, { passive: false });
+window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });  // trackpad pinch / Ctrl+wheel
 
 /* ---------- Start ---------- */
 (async function start() {
