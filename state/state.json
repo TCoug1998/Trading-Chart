@@ -7,7 +7,27 @@
     "last_event": "2026-11-18:SELL",
     "near": false
   },
-  "_health": {},
+  "_health": {
+    "email": {
+      "detail": "",
+      "status": "ok",
+      "t": "2026-11-22T16:48:48+00:00"
+    },
+    "push": {
+      "detail": "",
+      "status": "ok",
+      "t": "2026-11-22T16:48:48+00:00"
+    }
+  },
   "_heartbeat": "2026-11",
-  "_history": []
+  "_history": [
+    {
+      "email": "ok",
+      "kind": "TEST",
+      "push": "ok",
+      "sym": "SPX,NDQ",
+      "t": "2026-11-22T16:48:48+00:00",
+      "title": "Test d'alerte"
+    }
+  ]
 }
