@@ -372,23 +372,50 @@ def describe(s: dict) -> str:
             f"200 SMA {fmt_num(s['sma'], dp)}, écart {dist:+.2f} %.")
 
 
+def alert_ids(cfg: dict) -> list[str]:
+    """Symbols that send 200 SMA alerts: "alert_symbols" list (older configs: "alert_symbol")."""
+    ids = cfg.get("alert_symbols")
+    if not isinstance(ids, list):
+        ids = [cfg.get("alert_symbol", "SPX")]
+    known = {x["id"] for sec in cfg["sections"] for x in sec["symbols"]}
+    out = []
+    for i in ids:
+        if i in known and i not in out:
+            out.append(i)
+        elif i not in known:
+            log(f"Alerts: unknown symbol '{i}' in alert_symbols, ignored")
+    return out
+
+
 def process_alerts(summary: dict, data: dict, cfg: dict, state: dict, now_utc: datetime, url: str) -> None:
-    sid = cfg["alert_symbol"]
+    ids = alert_ids(cfg)
+    if not ids:
+        log("Alerts: no symbol selected in alert_symbols")
+        return
+    if os.environ.get("TEST_ALERT", "").lower() == "true":
+        lines = []
+        for sid in ids:
+            s = summary.get(sid)
+            if s and s.get("sma") is not None:
+                trend = "au-dessus" if s["above"] else "en dessous"
+                lines.append(f"{sid} est {trend} de sa 200 SMA. {describe(s)}")
+            else:
+                lines.append(f"{sid} : données indisponibles.")
+        ok = notify("Test d'alerte", "Les alertes fonctionnent pour : " + ", ".join(ids) + ".\n" + "\n".join(lines), url)
+        log(f"Test alert: {'delivered' if ok else 'not delivered'}")
+    for sid in ids:
+        process_symbol(sid, summary, data, cfg, state, now_utc, url)
+
+
+def process_symbol(sid: str, summary: dict, data: dict, cfg: dict, state: dict, now_utc: datetime, url: str) -> None:
     s = summary.get(sid)
     d = data.get(sid)
-    if not s or not d or s.get("stale"):
+    if not s or not d or s.get("stale") or s.get("sma") is None:
         log(f"Alerts: {sid} data unavailable this run, no alert evaluated")
         return
     sym_cfg = next(x for sec in cfg["sections"] for x in sec["symbols"] if x["id"] == sid)
     rows = d["rows"]
     st = state.setdefault(sid, {})
-
-    # Test mode
-    if os.environ.get("TEST_ALERT", "").lower() == "true":
-        trend = "au-dessus" if s["above"] else "en dessous"
-        ok = notify(f"{sid} : test d'alerte",
-                    f"Les alertes fonctionnent. {sid} est {trend} de sa 200 SMA. {describe(s)}", url)
-        log(f"Test alert: {'delivered' if ok else 'not delivered'}")
 
     confirmed = rows[:-1] if d["provisional"] else rows
     last_evt = next(((r[0], r[6]) for r in reversed(confirmed) if r[6]), None)
@@ -404,7 +431,7 @@ def process_alerts(summary: dict, data: dict, cfg: dict, state: dict, now_utc: d
                         f"{describe(s)}")
                 notify(f"{sid} : signal {kind}", body, url)
             else:
-                log("Alerts: older signal recorded without alert")
+                log(f"Alerts: {sid} older signal recorded without alert")
             st["last_event"] = key
 
     # Pre-alert during the last part of the session
@@ -469,7 +496,9 @@ def main() -> int:
     meta = {
         "generated": now_utc.isoformat(timespec="seconds"),
         "pushKey": vapid_public_key(),
-        "alertSymbol": cfg["alert_symbol"],
+        "alertSymbol": (alert_ids(cfg) or ["SPX"])[0],
+        "alertSymbols": alert_ids(cfg),
+        "repo": os.environ.get("GITHUB_REPOSITORY", ""),
         "missing": missing,
         "sections": [{"title": s["title"], "ids": [x["id"] for x in s["symbols"] if x["id"] in summary]} for s in cfg["sections"]],
         "symbols": summary,
