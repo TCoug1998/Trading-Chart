@@ -44,47 +44,67 @@ body {
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 10; }
 button { font: inherit; color: inherit; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.app { display: flex; flex-direction: column; height: 100%; max-width: 760px; margin: 0 auto; }
 .view { flex: 1; min-height: 0; display: none; flex-direction: column; }
 .view.on { display: flex; }
 .scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
 
-/* Bottom navigation */
-nav.tabs { display: flex; border-top: 1px solid var(--line); background: var(--bg); padding-bottom: 2px; }
+
+/* ---------- Layout: one view at a time on phone, chart + side panel on computer ---------- */
+.app { display: flex; flex-direction: column; height: 100%; max-width: 760px; margin: 0 auto; }
+.side { display: contents; }
+nav.tabs { display: flex; border-top: 1px solid var(--line); background: var(--bg); padding-bottom: 2px; order: 9; }
 nav.tabs button {
   flex: 1; background: none; border: 0; padding: 9px 0 7px; display: flex; flex-direction: column;
   align-items: center; gap: 3px; font-size: 12px; color: var(--muted); cursor: pointer;
 }
 nav.tabs button[aria-current="page"] { color: var(--text); }
 nav.tabs svg { width: 24px; height: 24px; }
+@media (min-width: 1000px) {
+  .app { max-width: none; display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr); }
+  .side { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
+  #v-chart { display: flex; }
+  nav.tabs button[data-go="graph"] { display: none; }
+  body.fs .side { display: none; }
+  body.fs .app { grid-template-columns: 1fr; }
+}
 
-/* Chart view: compact header drawn over the chart, toolbar at the bottom */
+/* ---------- Chart ---------- */
 .up { color: var(--up); } .down { color: var(--down); }
 .chart-wrap { position: relative; flex: 1; min-height: 240px; }
 #chart { position: absolute; inset: 0; }
+.wm { position: absolute; left: 10px; bottom: 34px; width: 34px; height: 34px; z-index: 3; pointer-events: none; opacity: .92; }
+.wm svg { width: 100%; height: 100%; display: block; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); }
 .hdr {
   position: absolute; left: 10px; top: 6px; right: 76px; z-index: 3; pointer-events: none;
   font-size: 13px; line-height: 1.45; color: var(--muted);
   text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg);
 }
+.hdr > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hdr .l1 { display: flex; align-items: center; gap: 8px; }
 .sym {
   pointer-events: auto; background: none; border: 0; padding: 2px 0; cursor: pointer;
   display: flex; align-items: baseline; gap: 7px; min-width: 0; text-shadow: inherit;
 }
 .sym b { font-size: 17px; font-weight: 600; color: var(--text); }
-.sym span { font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
+.sym span { font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
 .sym svg { width: 12px; height: 12px; color: var(--muted); align-self: center; flex: none; }
-.iv { font-size: 13px; font-weight: 600; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
 .tag { font-size: 11px; color: var(--accent); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; }
-.hdr .l1, .hdr .l2, .hdr .l3, .hdr .l4 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hdr .l2 { font-size: 15px; }
 .hdr .l2.ohlc { font-size: 12px; line-height: 22px; }
-.hdr .l2.ohlc span + span { margin-left: 5px; }
 .hdr .l2 .px { font-weight: 600; }
 .hdr b { font-weight: 500; color: var(--text); }
-.hdr .l2 b.up, .hdr .l3 b.up { color: var(--up); } .hdr .l2 b.down, .hdr .l3 b.down { color: var(--down); }
+.hdr b.up { color: var(--up); } .hdr b.down { color: var(--down); }
 .hdr span + span { margin-left: 7px; }
+.hdr .l2.ohlc span + span { margin-left: 5px; }
+.hdr .l3 { display: flex; align-items: center; }
+.eye {
+  pointer-events: auto; background: none; border: 0; padding: 4px; margin: -4px 2px -4px -4px; cursor: pointer;
+  color: var(--muted); display: inline-flex;
+}
+.eye svg { width: 17px; height: 17px; }
+.eye .eye-off { display: none; }
+.sma-off .eye .eye-on { display: none; } .sma-off .eye .eye-off { display: inline; }
+.sma-off .hdr .l3 > span, .sma-off .hdr .l4 { opacity: .45; }
 .tbar {
   display: flex; align-items: center; gap: 2px; padding: 0 6px; border-top: 1px solid var(--line);
   overflow-x: auto; scrollbar-width: none; min-height: 42px;
@@ -92,33 +112,60 @@ nav.tabs svg { width: 24px; height: 24px; }
 .tbar::-webkit-scrollbar { display: none; }
 .tbar .chip {
   background: none; border: 0; color: var(--muted); font-size: 14px; padding: 8px 9px; cursor: pointer;
-  white-space: nowrap; border-radius: 6px;
+  white-space: nowrap; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;
 }
 .tbar .chip[aria-pressed="true"] { color: var(--text); font-weight: 600; background: var(--panel); }
+.tbar .chip svg { width: 16px; height: 16px; }
 .tbar .sep { width: 1px; height: 18px; background: var(--line); flex: none; margin: 0 4px; }
+.tbar .push { margin-left: auto; }
+@media (max-width: 999px) { .tbar .push span { display: none; } }
 
-/* List view */
-header.bar { padding: 12px 14px 6px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-header.bar h1 { font-size: 22px; margin: 0; }
-header.bar small { color: var(--muted); font-size: 12px; text-align: right; }
-.sec { padding: 14px 14px 4px; color: var(--muted); font-size: 13px; }
-.row {
-  display: grid; grid-template-columns: 4px minmax(0,1fr) auto auto; gap: 0 12px; align-items: center;
-  width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line);
-  padding: 11px 14px 11px 0; text-align: left; cursor: pointer;
+/* ---------- Watchlist ---------- */
+header.bar { padding: 12px 14px 6px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+header.bar h1 { font-size: 20px; margin: 0; }
+header.bar small { color: var(--muted); font-size: 12px; display: block; }
+.textbtn { background: none; border: 0; color: var(--accent); font-weight: 600; font-size: 14px; padding: 8px 4px; cursor: pointer; }
+.sec {
+  display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; cursor: pointer;
+  padding: 14px 14px 8px; color: var(--muted); font-size: 13px; text-align: left; border-bottom: 1px solid var(--line);
 }
-.row .strip { align-self: stretch; border-radius: 0 3px 3px 0; background: var(--line); }
-.row .strip.up { background: var(--up); } .row .strip.down { background: var(--down); }
-.row .id { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 6px; }
-.row .txt { min-width: 0; display: block; }
+.sec svg { width: 16px; height: 16px; transition: transform .15s; flex: none; }
+.sec.closed svg { transform: rotate(-90deg); }
+.sec-edit { display: flex; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
+.sec-edit input {
+  flex: 1; font: inherit; font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px;
+}
+.row {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 0 12px; align-items: center;
+  width: 100%; background: none; border: 0; padding: 10px 14px; text-align: left; cursor: pointer; color: inherit;
+}
+.row + .row .txt, .row + .row .px { border: 0; }
+.row[aria-current="true"] { background: var(--panel); }
+.badge {
+  width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 12px; letter-spacing: -.3px;
+}
+.badge.long { font-size: 10px; }
+.row .txt { min-width: 0; }
+.row .id { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 7px; }
 .row .nm { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row .sig { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.pill { font-size: 12px; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
-.pill.up { background: var(--up-soft); } .pill.down { background: var(--down-soft); }
-.row .px { text-align: right; min-width: 92px; }
-.row .px b { font-weight: 600; display: block; }
+.smatag { font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+.smatag.up { background: var(--up-soft); } .smatag.down { background: var(--down-soft); }
+.row .sig { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+.row .px { text-align: right; white-space: nowrap; }
+.row .px b { font-weight: 600; display: block; font-size: 15px; }
 .row .px span { font-size: 13px; }
+.mv { display: flex; gap: 6px; }
+.mv button {
+  width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text);
+}
+.mv button[disabled] { opacity: .3; cursor: default; }
+.mv svg { width: 18px; height: 18px; }
+.editbar { padding: 14px; display: grid; gap: 8px; }
 .note { color: var(--muted); font-size: 13px; padding: 12px 14px 20px; }
+@media (hover: hover) { .row:hover { background: var(--panel); } }
 
 /* Alerts view */
 .card { margin: 10px 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
@@ -143,21 +190,21 @@ textarea {
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
 
-  <!-- Chart -->
   <section class="view" id="v-chart" aria-label="Graphique">
     <div class="chart-wrap">
       <div class="hdr">
         <div class="l1">
           <button class="sym" id="symBtn" aria-label="Changer de symbole"><b id="qId">SPX</b><span id="qName"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
-          <span class="iv">D</span><span class="tag" id="qTag" hidden></span>
+          <span class="tag" id="qTag" hidden></span>
         </div>
         <div class="l2" id="l2"></div>
-        <div class="l3" id="l3"></div>
+        <div class="l3"><button class="eye" id="eyeBtn" aria-label="Afficher ou masquer la 200 SMA" aria-pressed="true"><svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button><span id="l3"></span></div>
         <div class="l4" id="l4"></div>
       </div>
       <div id="chart"></div>
+      <div class="wm"><svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#000"/><path d="M84 21 H32 Q17 21 17 36 V64 Q17 79 32 79 H84" fill="none" stroke="#fff" stroke-width="14"/><path d="M37 38.5 H75 M56 38.5 V68" stroke="#fff" stroke-width="13" fill="none"/></svg></div>
     </div>
     <div class="tbar" role="toolbar" aria-label="Affichage">
       <button class="chip" data-tf="1M">1M</button>
@@ -168,13 +215,16 @@ textarea {
       <button class="chip" data-tf="MAX">Max</button>
       <span class="sep"></span>
       <button class="chip" id="modeBtn" aria-pressed="false">Bougies</button>
-      <button class="chip" id="logBtn" aria-pressed="false">Log</button>
+      <button class="chip push" id="fsBtn" aria-label="Plein écran" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Plein écran</span></button>
     </div>
   </section>
 
-  <!-- Watchlist -->
+  <div class="side">
   <section class="view" id="v-list" aria-label="Liste">
-    <header class="bar"><h1>Marchés</h1><small id="updated"></small></header>
+    <header class="bar">
+      <div><h1>Liste de surveillance</h1><small id="updated"></small></div>
+      <button class="textbtn" id="editBtn">Modifier</button>
+    </header>
     <div class="scroll" id="list"></div>
   </section>
 
@@ -208,7 +258,7 @@ textarea {
           <button class="secondary" id="keyCopy">Copier la clé</button>
         </div>
       </div>
-      <p class="note">Données Yahoo Finance, en différé, usage personnel. Graphique : TradingView Lightweight Charts, licence Apache 2.0, <a href="vendor/lightweight-charts-LICENSE.txt" style="color:inherit">voir la licence</a>.</p>
+      <p class="note">Données Yahoo Finance, en différé, usage personnel. Graphiques réalisés avec TradingView Lightweight Charts™, Copyright © 2025 TradingView, Inc., <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" style="color:inherit">tradingview.com</a>, licence Apache 2.0 (<a href="vendor/lightweight-charts-LICENSE.txt" style="color:inherit">texte de la licence</a>).</p>
     </div>
   </section>
 
@@ -217,6 +267,7 @@ textarea {
     <button data-go="graph" aria-label="Graphique"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 14l3-3 3 2 4-5"/></svg>Graphique</button>
     <button data-go="alertes" aria-label="Alertes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 2h16zM10 20a2 2 0 0 0 4 0"/></svg>Alertes</button>
   </nav>
+  </div>
 </div>
 
 <script src="vendor/lightweight-charts-5.2.1.js"></script>
@@ -224,7 +275,16 @@ textarea {
 "use strict";
 const LWC = window.LightweightCharts;
 const $ = (id) => document.getElementById(id);
-const state = { meta: null, cur: null, data: {}, tf: "1A", candles: false, log: false };
+
+/* Per-device display preferences (kept in this browser only, removable with "Rétablir") */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("tc." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("tc." + k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem("tc." + k); } catch (e) {} },
+};
+const state = { meta: null, cur: null, data: {}, tf: "1A", candles: store.get("candles", false),
+  sma: store.get("sma", true), editing: false, closed: store.get("closed", []) };
+const wide = matchMedia("(min-width: 1000px)");
 
 /* ---------- Formatting: space thousands, point decimals, DD/MM/YYYY ---------- */
 function fmt(x, dp) {
@@ -246,6 +306,7 @@ function alpha(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
 }
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /* ---------- Data ---------- */
 async function getJSON(url) {
@@ -254,11 +315,7 @@ async function getJSON(url) {
   return r.json();
 }
 async function loadMeta() {
-  try {
-    state.meta = await getJSON("data/summary.json");
-  } catch (e) {
-    state.meta = null;
-  }
+  try { state.meta = await getJSON("data/summary.json"); } catch (e) { state.meta = null; }
 }
 async function loadSymbol(file) {
   if (!state.data[file]) state.data[file] = await getJSON(`data/sym/${file}.json`);
@@ -273,7 +330,7 @@ class BandRenderer {
     const d = this._d, o = this._o;
     if (!d || !d.visibleRange || !d.bars.length) return;
     target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio: hr, verticalPixelRatio: vr, bitmapSize }) => {
-      const from = Math.max(0, d.visibleRange.from - 1), to = Math.min(d.bars.length, d.visibleRange.to + 1);
+      const from = Math.max(0, d.visibleRange.from), to = Math.min(d.bars.length, d.visibleRange.to);
       const bw = Math.max(d.barSpacing * hr, 2 * hr);
       for (let i = from; i < to; i++) {
         const b = d.bars[i], v = b.originalData;
@@ -281,7 +338,7 @@ class BandRenderer {
           ctx.fillStyle = v.ev > 0 ? o.buyBand : o.sellBand;
           ctx.fillRect(Math.round(b.x * hr - bw / 2), 0, Math.ceil(bw), bitmapSize.height);
         }
-        if (!o.showFill || i === 0) continue;
+        if (!o.showFill || i === from) continue;  // previous bar is off-screen: its x is not up to date
         const p = d.bars[i - 1], pv = p.originalData;
         if (pv.sma == null || v.sma == null) continue;
         const x0 = p.x * hr, x1 = b.x * hr;
@@ -308,7 +365,7 @@ class BandSeries {
 }
 
 /* ---------- Chart ---------- */
-let chart, band, smaS, closeS, candleS, markClose, markCandle, rows = [], dp = 2;
+let chart, band, smaS, closeS, candleS, markClose, markCandle, marks = [], priceLines = [], rows = [], dp = 2, tfPending = false;
 function theme() {
   return { bg: css("--bg"), text: css("--muted"), grid: css("--chart-grid"), line: css("--line"),
     up: css("--up"), down: css("--down") };
@@ -317,39 +374,44 @@ function buildChart() {
   const t = theme();
   chart = LWC.createChart($("chart"), {
     autoSize: true,
-    layout: { background: { type: "solid", color: t.bg }, textColor: t.text, fontSize: 11, attributionLogo: true,
+    layout: { background: { type: "solid", color: t.bg }, textColor: t.text, fontSize: 11, attributionLogo: false,
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" },
     grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } },
-    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.24, bottom: 0.06 } },
+    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.24, bottom: 0.08 } },
     timeScale: { borderVisible: false, rightOffset: 4, minBarSpacing: 0.2 },
     crosshair: { mode: LWC.CrosshairMode.Normal },
     localization: { locale: "fr-FR", dateFormat: "dd/MM/yyyy", priceFormatter: (p) => fmt(p, dp) },
   });
   band = chart.addCustomSeries(new BandSeries(), { priceLineVisible: false, lastValueVisible: false });
-  smaS = chart.addSeries(LWC.LineSeries, { lineWidth: 4, priceLineVisible: false, crosshairMarkerVisible: false,
-    lastValueVisible: true });
-  closeS = chart.addSeries(LWC.LineSeries, { lineWidth: 2, priceLineVisible: true, priceLineStyle: 2 });
-  candleS = chart.addSeries(LWC.CandlestickSeries, { visible: false, borderVisible: false });
+  const quiet = { priceLineVisible: false, lastValueVisible: false };
+  smaS = chart.addSeries(LWC.LineSeries, { lineWidth: 4, crosshairMarkerVisible: false, ...quiet });
+  candleS = chart.addSeries(LWC.CandlestickSeries, { visible: false, borderVisible: false, ...quiet });
+  closeS = chart.addSeries(LWC.LineSeries, { lineWidth: 2, ...quiet });
   markClose = LWC.createSeriesMarkers(closeS, []);
   markCandle = LWC.createSeriesMarkers(candleS, []);
   chart.subscribeCrosshairMove((p) => legend(p && p.time ? p.time : null));
+  new ResizeObserver(() => { if (tfPending && $("chart").clientWidth > 0) setTimeout(applyTf, 0); }).observe($("chart"));
   styleSeries();
 }
+/* Bougies: candles instead of a plain price line. Eye: the 200 SMA indicator (close line, SMA, fill, signals). */
 function styleSeries() {
-  const t = theme();
+  const t = theme(), lineOn = state.sma || !state.candles;
   chart.applyOptions({ layout: { background: { type: "solid", color: t.bg }, textColor: t.text },
     grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } } });
-  band.applyOptions({ upFill: alpha(t.up, .22), downFill: alpha(t.down, .22), buyBand: alpha(t.up, .5),
-    sellBand: alpha(t.down, .5), showFill: !state.candles });
-  candleS.applyOptions({ upColor: t.up, downColor: t.down, wickUpColor: t.up, wickDownColor: t.down });
-  closeS.applyOptions({ visible: !state.candles });
-  candleS.applyOptions({ visible: state.candles });
-  chart.priceScale("right").applyOptions({ mode: state.log ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal });
-  if (rows.length) setSeriesData(false);
+  band.applyOptions({ visible: state.sma, upFill: alpha(t.up, .22), downFill: alpha(t.down, .22),
+    buyBand: alpha(t.up, .5), sellBand: alpha(t.down, .5), showFill: true });
+  smaS.applyOptions({ visible: state.sma });
+  candleS.applyOptions({ visible: state.candles, upColor: t.up, downColor: t.down, wickUpColor: t.up, wickDownColor: t.down });
+  closeS.applyOptions({ visible: lineOn });
+  document.body.classList.toggle("sma-off", !state.sma);
+  $("eyeBtn").setAttribute("aria-pressed", state.sma);
+  $("modeBtn").setAttribute("aria-pressed", state.candles);
+  if (rows.length) { markClose.setMarkers(state.sma && lineOn ? marks : []); markCandle.setMarkers(state.sma && !lineOn ? marks : []); }
 }
 function setSeriesData(resetRange) {
   const t = theme(), pf = { type: "price", precision: dp, minMove: Math.pow(10, -dp) };
-  const closes = [], smas = [], bands = [], candles = [], marks = [];
+  const closes = [], smas = [], bands = [], candles = [];
+  marks = [];
   rows.forEach((r, i) => {
     const [time, o, h, l, c, s, ev] = r, pc = i ? rows[i - 1][4] : c, ps = i ? rows[i - 1][5] : s;
     closes.push({ time, value: c, color: c >= pc ? t.up : t.down });
@@ -360,9 +422,20 @@ function setSeriesData(resetRange) {
     if (ev) marks.push({ time, position: ev > 0 ? "belowBar" : "aboveBar", shape: ev > 0 ? "arrowUp" : "arrowDown",
       color: ev > 0 ? t.up : t.down, size: 1 });
   });
+  const last = rows[rows.length - 1], prev = rows[rows.length - 2] || last;
+  const lastCol = last[4] >= prev[4] ? t.up : t.down;
   for (const s of [closeS, smaS, candleS]) s.applyOptions({ priceFormat: pf });
   band.setData(bands); smaS.setData(smas); closeS.setData(closes); candleS.setData(candles);
-  markClose.setMarkers(marks); markCandle.setMarkers(marks);
+  // Latest close: dotted line + value on the price axis, shown even when the last bar is scrolled out of view.
+  for (const [ser, pl] of priceLines) ser.removePriceLine(pl);
+  priceLines = [];
+  const pxLine = { price: last[4], color: lastCol, lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: true };
+  priceLines.push([closeS, closeS.createPriceLine(pxLine)], [candleS, candleS.createPriceLine(pxLine)]);
+  if (last[5] != null) {
+    const smaCol = last[5] >= (prev[5] ?? last[5]) ? t.up : t.down;
+    priceLines.push([smaS, smaS.createPriceLine({ price: last[5], color: smaCol, lineVisible: false, axisLabelVisible: true })]);
+  }
+  styleSeries();
   if (resetRange) applyTf();
   legend(null);
 }
@@ -378,6 +451,7 @@ function applyTf() {
     from = rows.findIndex((r) => r[0] >= iso);
   }
   chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, from), to: rows.length - 1 + 4 });
+  tfPending = $("chart").clientWidth === 0;
   document.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tf === state.tf));
 }
 function legend(time) {
@@ -386,6 +460,7 @@ function legend(time) {
   if (time) { const f = rows.findIndex((x) => x[0] === time); if (f >= 0) i = f; }
   header(time ? i : -1);
 }
+
 /* ---------- Chart header ---------- */
 let curSym = null;
 function renderQuote(s) {
@@ -401,11 +476,11 @@ function header(i) {
   const s = curSym; if (!s) return;
   const d = s.dp;
   if (i >= 0 && rows[i]) {
-    const [t, o, h, l, c, sma] = rows[i], pc = i ? rows[i - 1][4] : c, ps = i ? rows[i - 1][5] : sma;
+    const [, o, h, l, c, sma] = rows[i], pc = i ? rows[i - 1][4] : c, ps = i ? rows[i - 1][5] : sma;
     const cl = c >= pc ? "up" : "down";
     $("l2").className = "l2 ohlc";
-    $("l2").innerHTML = `<span>O <b class="${cl}">${fmt(o, d)}</b></span>` +
-      `<span>H <b class="${cl}">${fmt(h, d)}</b></span><span>B <b class="${cl}">${fmt(l, d)}</b></span><span>C <b class="${cl}">${fmt(c, d)}</b></span>`;
+    $("l2").innerHTML = `<span>O <b class="${cl}">${fmt(o, d)}</b></span><span>H <b class="${cl}">${fmt(h, d)}</b></span>` +
+      `<span>B <b class="${cl}">${fmt(l, d)}</b></span><span>C <b class="${cl}">${fmt(c, d)}</b></span>`;
     smaLine(sma, ps, sma == null ? null : (c / sma - 1) * 100, d);
   } else {
     const cl = s.chg >= 0 ? "up" : "down";
@@ -417,12 +492,11 @@ function header(i) {
   $("l4").innerHTML = e
     ? `<span>Dernier signal <b class="${e.type === "BUY" ? "up" : "down"}">${e.type === "BUY" ? "▲ Achat" : "▼ Vente"}</b> le ${fdate(e.date)}${e.provisional ? " (non confirmé)" : ""}</span>`
     : "";
-  $("l4").querySelector("b")?.style.setProperty("color", `var(--${e && e.type === "BUY" ? "up" : "down"})`);
 }
 function smaLine(sma, prevSma, dist, d) {
-  if (sma == null) { $("l3").innerHTML = "<span>SMA 200 · D</span><span>–</span>"; return; }
+  if (sma == null) { $("l3").innerHTML = "<span>SMA 200</span><span>–</span>"; return; }
   const above = dist >= 0, rising = sma >= prevSma;
-  $("l3").innerHTML = `<span>SMA 200 · D</span><span><b class="${rising ? "up" : "down"}">${fmt(sma, d)} ${rising ? "↗" : "↘"}</b></span>` +
+  $("l3").innerHTML = `<span>SMA 200</span><span><b class="${rising ? "up" : "down"}">${fmt(sma, d)} ${rising ? "↗" : "↘"}</b></span>` +
     `<span title="Écart du cours à la SMA"><b class="${above ? "up" : "down"}">${pct(dist)}</b></span>`;
 }
 async function openChart(file, keepRange) {
@@ -430,6 +504,7 @@ async function openChart(file, keepRange) {
   const s = Object.values(m.symbols).find((x) => x.file === file) || m.symbols[m.alertSymbol];
   state.cur = s.file;
   renderQuote(s);
+  markCurrentRow();
   try {
     const d = await loadSymbol(s.file);
     if (state.cur !== s.file) return;
@@ -441,63 +516,162 @@ async function openChart(file, keepRange) {
   }
 }
 
-/* ---------- Watchlist ---------- */
+/* ---------- Watchlist: layout (order + section titles) kept on this device ---------- */
+function baseLayout() { return state.meta.sections.map((s) => ({ title: s.title, ids: [...s.ids] })); }
+function getLayout() {
+  const base = baseLayout(), saved = store.get("layout", null);
+  if (!Array.isArray(saved) || !saved.length) return base;
+  const valid = new Set(Object.keys(state.meta.symbols)), used = new Set();
+  const out = saved.map((s) => ({ title: String(s.title || "").slice(0, 60),
+    ids: (Array.isArray(s.ids) ? s.ids : []).filter((id) => valid.has(id) && !used.has(id) && used.add(id)) }));
+  base.forEach((sec, i) => sec.ids.forEach((id) => {   // symbols added to the config later
+    if (used.has(id)) return;
+    const target = out.find((s) => s.title === sec.title) || out[Math.min(i, out.length - 1)];
+    target.ids.push(id); used.add(id);
+  }));
+  return out;
+}
+let layout = [];
+function saveLayout() { store.set("layout", layout); }
+function moveSym(id, dir) {
+  const si = layout.findIndex((s) => s.ids.includes(id)); if (si < 0) return;
+  const ids = layout[si].ids, k = ids.indexOf(id);
+  if (dir < 0) {
+    if (k > 0) [ids[k - 1], ids[k]] = [ids[k], ids[k - 1]];
+    else if (si > 0) { ids.splice(k, 1); layout[si - 1].ids.push(id); }
+  } else {
+    if (k < ids.length - 1) [ids[k + 1], ids[k]] = [ids[k], ids[k + 1]];
+    else if (si < layout.length - 1) { ids.splice(k, 1); layout[si + 1].ids.unshift(id); }
+  }
+  saveLayout(); renderList();
+  const b = document.querySelector(`[data-mv="${CSS.escape(id)}"][data-dir="${dir}"]`);
+  if (b && !b.disabled) b.focus();
+}
+const BADGE = { DJI: "DJ", NDQ: "NDX", SPX: "SPX", "MWL1!": "MSCI", CAC40: "CAC", VXN: "VXN", VIX: "VIX", BTCEUR: "BTC",
+  ETHEUR: "ETH", BTCUSD: "BTC", EURUSD: "€/$" };
+function badgeFor(s) {
+  const txt = BADGE[s.id] || s.id.replace(/[^A-Z0-9]/gi, "").slice(0, 4);
+  let h = 0; for (const c of s.id) h = (h * 31 + c.charCodeAt(0)) % 360;
+  const hue = { Crypto: 32 }[s.section] ?? (s.id.startsWith("BTC") || s.id.startsWith("ETH") ? 32 : h);
+  return `<span class="badge${txt.length > 3 ? " long" : ""}" style="background:hsl(${hue} 55% 42%)" aria-hidden="true">${esc(txt)}</span>`;
+}
+const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+const UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg>';
+const DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
 function renderList() {
   const m = state.meta, el = $("list");
   $("updated").textContent = "Mis à jour le " + fdatetime(m.generated);
+  $("editBtn").textContent = state.editing ? "Terminé" : "Modifier";
   const recent = (e) => e && (Date.now() - new Date(e.date)) / 864e5 < 8;
+  const all = layout.flatMap((s) => s.ids), first = all[0], last = all[all.length - 1];
   let html = "";
-  for (const sec of m.sections) {
-    html += `<div class="sec">${esc(sec.title)}</div>`;
+  layout.forEach((sec, si) => {
+    const closed = !state.editing && state.closed.includes(sec.title);
+    html += state.editing
+      ? `<div class="sec-edit"><input data-sec="${si}" value="${esc(sec.title)}" maxlength="60" aria-label="Titre de la section"></div>`
+      : `<button class="sec${closed ? " closed" : ""}" data-title="${esc(sec.title)}" aria-expanded="${!closed}">${CHEV}${esc(sec.title)}</button>`;
+    if (closed) return;
     for (const id of sec.ids) {
-      const s = m.symbols[id];
+      const s = m.symbols[id]; if (!s) continue;
       const dir = s.sma == null ? "" : s.above ? "up" : "down";
-      const chg = s.chg >= 0 ? "up" : "down";
+      const tag = s.distPct == null ? "" : `<span class="smatag ${dir}" title="Écart à la 200 SMA">${s.above ? "▲" : "▼"} ${pct(s.distPct)}</span>`;
       const sig = recent(s.lastEvent)
-        ? `<span class="sig" style="background:var(--${s.lastEvent.type === "BUY" ? "up" : "down"})" title="Signal récent"></span>` : "";
-      html += `<button class="row" data-file="${esc(s.file)}">
-        <span class="strip ${dir}"></span>
-        <span class="txt"><span class="id">${esc(s.id)}${sig}</span><span class="nm">${esc(s.name)}</span></span>
-        <span class="pill ${dir}">${s.distPct == null ? "" : pct(s.distPct)}</span>
-        <span class="px"><b>${fmt(s.last, s.dp)}</b><span class="${chg}">${pct(s.chgPct)}</span></span>
-      </button>`;
+        ? `<span class="sig" style="background:var(--${s.lastEvent.type === "BUY" ? "up" : "down"})" title="Croisement récent"></span>` : "";
+      const chg = s.chg >= 0 ? "up" : "down";
+      const txt = `<span class="txt"><span class="id">${esc(s.id)}${tag}${sig}</span><span class="nm">${esc(s.name)}</span></span>`;
+      html += state.editing
+        ? `<div class="row">${badgeFor(s)}${txt}<span class="mv">
+             <button data-mv="${esc(id)}" data-dir="-1" aria-label="Monter ${esc(s.id)}" ${id === first ? "disabled" : ""}>${UP}</button>
+             <button data-mv="${esc(id)}" data-dir="1" aria-label="Descendre ${esc(s.id)}" ${id === last ? "disabled" : ""}>${DOWN}</button></span></div>`
+        : `<button class="row" data-file="${esc(s.file)}">${badgeFor(s)}${txt}
+             <span class="px"><b>${fmt(s.last, s.dp)}</b><span class="${chg}">${sgn(s.chg, s.dp)} ${pct(s.chgPct)}</span></span></button>`;
     }
+  });
+  if (state.editing) {
+    html += `<div class="editbar"><button class="primary" id="doneBtn">Terminé</button>
+      <button class="secondary" id="resetBtn">Rétablir l’ordre et les titres d’origine</button></div>
+      <p class="note">Les flèches déplacent un symbole d’une ligne. En haut ou en bas d’une section, il passe dans la section voisine. Ces réglages sont enregistrés sur cet appareil uniquement.</p>`;
+  } else {
+    if (m.missing && m.missing.length)
+      html += `<p class="note">Indisponibles chez Yahoo Finance : ${m.missing.map(esc).join(", ")}.</p>`;
+    html += `<p class="note">L’étiquette ▲ ou ▼ donne l’écart du cours à sa 200 SMA. Le point coloré signale un croisement dans les 7 derniers jours.</p>`;
   }
-  if (m.missing && m.missing.length)
-    html += `<p class="note">Indisponibles chez Yahoo Finance : ${m.missing.map(esc).join(", ")}. Modifie leur code dans config/symbols.json si besoin.</p>`;
-  html += `<p class="note">La pastille indique l’écart du cours à sa 200 SMA : verte au-dessus, rouge en dessous. Le point coloré signale un croisement dans les 7 derniers jours.</p>`;
   el.innerHTML = html;
+  markCurrentRow();
 }
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function markCurrentRow() {
+  document.querySelectorAll("#list .row[data-file]").forEach((r) =>
+    r.dataset.file === state.cur && wide.matches ? r.setAttribute("aria-current", "true") : r.removeAttribute("aria-current"));
+}
+$("list").addEventListener("click", (e) => {
+  const sec = e.target.closest(".sec");
+  if (sec) {
+    const t = sec.dataset.title, i = state.closed.indexOf(t);
+    i >= 0 ? state.closed.splice(i, 1) : state.closed.push(t);
+    store.set("closed", state.closed); renderList(); return;
+  }
+  const mv = e.target.closest("[data-mv]");
+  if (mv) { moveSym(mv.dataset.mv, Number(mv.dataset.dir)); return; }
+  if (e.target.closest("#doneBtn")) { toggleEdit(); return; }
+  if (e.target.closest("#resetBtn")) { store.del("layout"); store.del("closed"); state.closed = []; layout = baseLayout(); renderList(); return; }
+  const b = e.target.closest(".row[data-file]"); if (b) location.hash = b.dataset.file;
+});
+$("list").addEventListener("input", (e) => {
+  const inp = e.target.closest("input[data-sec]"); if (!inp) return;
+  layout[Number(inp.dataset.sec)].title = inp.value.trim() || "Section";
+  saveLayout();
+});
+function toggleEdit() { state.editing = !state.editing; renderList(); }
+$("editBtn").addEventListener("click", toggleEdit);
 
 /* ---------- Navigation ---------- */
 function route() {
   const h = decodeURIComponent(location.hash.slice(1));
   const view = h === "liste" ? "list" : h === "alertes" ? "alerts" : "chart";
-  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === "v-" + view));
-  const tab = { list: "liste", chart: "graph", alerts: "alertes" }[view];
+  const side = view === "alerts" ? "alerts" : "list";
+  document.querySelectorAll(".view").forEach((v) => {
+    const on = wide.matches ? (v.id === "v-chart" || v.id === "v-" + side) : v.id === "v-" + view;
+    v.classList.toggle("on", on);
+  });
+  const tab = wide.matches ? (side === "alerts" ? "alertes" : "liste") : { list: "liste", chart: "graph", alerts: "alertes" }[view];
   document.querySelectorAll("nav.tabs button").forEach((b) =>
     b.dataset.go === tab ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   if (!state.meta) return;
-  if (view === "chart") {
-    const file = h && h !== "graph" ? h : state.cur || state.meta.symbols[state.meta.alertSymbol]?.file;
+  if (view === "chart" || wide.matches) {
+    const file = view === "chart" && h && h !== "graph" ? h : state.cur || state.meta.symbols[state.meta.alertSymbol]?.file;
     if (file !== state.cur || !rows.length) openChart(file);
   }
   if (view === "alerts") refreshPush();
+  markCurrentRow();
 }
 document.querySelector("nav.tabs").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   location.hash = b.dataset.go === "graph" ? (state.cur || "graph") : b.dataset.go;
 });
-$("list").addEventListener("click", (e) => {
-  const b = e.target.closest(".row"); if (b) location.hash = b.dataset.file;
-});
 $("symBtn").addEventListener("click", () => (location.hash = "liste"));
 document.querySelectorAll("[data-tf]").forEach((b) => b.addEventListener("click", () => { state.tf = b.dataset.tf; applyTf(); }));
-$("modeBtn").addEventListener("click", (e) => { state.candles = !state.candles; e.currentTarget.setAttribute("aria-pressed", state.candles); styleSeries(); });
-$("logBtn").addEventListener("click", (e) => { state.log = !state.log; e.currentTarget.setAttribute("aria-pressed", state.log); styleSeries(); });
+$("modeBtn").addEventListener("click", () => { state.candles = !state.candles; store.set("candles", state.candles); styleSeries(); });
+$("eyeBtn").addEventListener("click", () => { state.sma = !state.sma; store.set("sma", state.sma); styleSeries(); });
 window.addEventListener("hashchange", route);
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => chart && styleSeries());
+wide.addEventListener("change", route);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => chart && rows.length && setSeriesData(false));
+
+/* ---------- Full screen ---------- */
+const fsOk = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+if (fsOk) $("fsBtn").hidden = false;
+$("fsBtn").addEventListener("click", () => {
+  const d = document;
+  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  else { const el = d.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
+});
+function onFs() {
+  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  document.body.classList.toggle("fs", on);
+  $("fsBtn").setAttribute("aria-pressed", on);
+  $("fsBtn").querySelector("span").textContent = on ? "Quitter" : "Plein écran";
+}
+document.addEventListener("fullscreenchange", onFs);
+document.addEventListener("webkitfullscreenchange", onFs);
 
 /* ---------- Push notifications ---------- */
 const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -583,17 +757,18 @@ $("keyBtn").addEventListener("click", async () => {
   buildChart();
   await loadMeta();
   if (!state.meta) {
-    const msg = `<div class="empty"><strong>Aucune donnée pour l’instant.</strong>La première mise à jour n’a pas encore tourné. Sur GitHub, onglet Actions, lance « Mise à jour des données », puis recharge cette page.</div>`;
-    $("list").innerHTML = msg;
+    $("list").innerHTML = `<div class="empty"><strong>Aucune donnée pour l’instant.</strong>La première mise à jour n’a pas encore tourné. Sur GitHub, onglet Actions, lance « Mise à jour des données », puis recharge cette page.</div>`;
     $("l2").textContent = "Aucune donnée pour l’instant.";
     route(); return;
   }
+  layout = getLayout();
   renderList();
   route();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-  setInterval(async () => {          // refresh summary every 10 min while open
+  setInterval(async () => {          // refresh every 10 min while open
     await loadMeta(); if (!state.meta) return;
-    state.data = {}; renderList();
+    state.data = {}; layout = getLayout();
+    if (!state.editing) renderList();
     if (state.cur) openChart(state.cur, true);
   }, 600000);
 })();
