@@ -1,9 +1,13 @@
 {
   "NDQ": {
-    "last_event": "2026-11-10:SELL"
+    "last_event": "2026-11-10:SELL",
+    "near": false
   },
   "SPX": {
-    "last_event": "2026-11-18:SELL"
+    "last_event": "2026-11-18:SELL",
+    "near": false
   },
-  "_heartbeat": "2026-11"
+  "_health": {},
+  "_heartbeat": "2026-11",
+  "_history": []
 }
