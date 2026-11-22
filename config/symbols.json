@@ -1,6 +1,7 @@
 {
-  "alert_symbols": ["NDQ", "SPX"],
+  "alert_symbols": ["SPX", "NDQ"],
   "pre_alert_minutes": 75,
+  "proximity_pct": 2,
   "history_years": 20,
   "sections": [
     {"title": "Indices", "symbols": [
