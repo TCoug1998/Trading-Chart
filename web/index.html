@@ -398,7 +398,7 @@ class BandSeries {
 }
 
 /* ---------- Chart ---------- */
-let chart, band, smaS, closeS, candleS, markClose, markCandle, marks = [], priceLines = [], rows = [], dp = 2, tfPending = false;
+let lastPrice = null, chart, band, smaS, closeS, candleS, markClose, markCandle, marks = [], priceLines = [], rows = [], dp = 2, tfPending = false;
 function theme() {
   return { bg: css("--bg"), text: css("--muted"), grid: css("--chart-grid"), line: css("--line"),
     up: css("--up"), down: css("--down") };
@@ -417,12 +417,20 @@ function buildChart() {
   });
   band = chart.addCustomSeries(new BandSeries(), { priceLineVisible: false, lastValueVisible: false });
   const quiet = { priceLineVisible: false, lastValueVisible: false };
-  smaS = chart.addSeries(LWC.LineSeries, { lineWidth: 4, crosshairMarkerVisible: false, ...quiet });
+  // Keep the latest price (dotted line) inside the price scale, even when scrolled back in time.
+  const withLast = (orig) => {
+    const r = orig();
+    if (!r || !r.priceRange || lastPrice == null) return r;
+    return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, lastPrice), maxValue: Math.max(r.priceRange.maxValue, lastPrice) } };
+  };
+  quiet.autoscaleInfoProvider = withLast;
+  smaS = chart.addSeries(LWC.LineSeries, { lineWidth: 4, crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: false });
   candleS = chart.addSeries(LWC.CandlestickSeries, { visible: false, borderVisible: false, ...quiet });
   closeS = chart.addSeries(LWC.LineSeries, { lineWidth: 2, ...quiet });
   markClose = LWC.createSeriesMarkers(closeS, []);
   markCandle = LWC.createSeriesMarkers(candleS, []);
   chart.subscribeCrosshairMove((p) => legend(p && p.time ? p.time : null));
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => updateLabels());
   new ResizeObserver(() => { if (tfPending && $("chart").clientWidth > 0) setTimeout(applyTf, 0); }).observe($("chart"));
   styleSeries();
 }
@@ -435,9 +443,10 @@ function styleSeries() {
     buyBand: alpha(t.up, .5), sellBand: alpha(t.down, .5), showFill: true });
   smaS.applyOptions({ visible: state.sma });
   candleS.applyOptions({ visible: state.candles, upColor: t.up, downColor: t.down, wickUpColor: t.up, wickDownColor: t.down,
-    lastValueVisible: !lineOn });
-  closeS.applyOptions({ visible: lineOn, lastValueVisible: true });
+    lastValueVisible: false });
+  closeS.applyOptions({ visible: lineOn, lastValueVisible: false });
   smaS.applyOptions({ lastValueVisible: true });
+  updateLabels();
   document.body.classList.toggle("sma-off", !state.sma);
   $("eyeBtn").setAttribute("aria-pressed", state.sma);
   $("modeBtn").setAttribute("aria-pressed", state.candles);
@@ -464,12 +473,28 @@ function setSeriesData(resetRange) {
   // Latest close: dotted line + value on the price axis, shown even when the last bar is scrolled out of view.
   for (const [ser, pl] of priceLines) ser.removePriceLine(pl);
   priceLines = [];
+  lastPrice = last[4];
   const pxLine = { price: last[4], color: lastCol, lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: true };
   priceLines.push([closeS, closeS.createPriceLine(pxLine)], [candleS, candleS.createPriceLine(pxLine)]);
+  updateLabels();
 
   styleSeries();
   if (resetRange) applyTf();
   legend(null);
+}
+/* One label for the latest price (dotted line). A second label for the last visible bar only when
+   the latest bar is scrolled out of view, as in TradingView. */
+function updateLabels() {
+  if (!rows.length) return;
+  const lineOn = state.sma || !state.candles;
+  const r = chart.timeScale().getVisibleLogicalRange();
+  const lastIn = !r || r.to >= rows.length - 1;
+  closeS.applyOptions({ lastValueVisible: lineOn && !lastIn });
+  candleS.applyOptions({ lastValueVisible: !lineOn && !lastIn });
+  for (const [ser, pl] of priceLines) {
+    const own = ser === (lineOn ? closeS : candleS);
+    pl.applyOptions({ axisLabelVisible: own, lineVisible: own });
+  }
 }
 function applyTf() {
   if (!rows.length) return;
