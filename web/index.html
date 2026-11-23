@@ -430,7 +430,6 @@ function buildChart() {
   markClose = LWC.createSeriesMarkers(closeS, []);
   markCandle = LWC.createSeriesMarkers(candleS, []);
   chart.subscribeCrosshairMove((p) => legend(p && p.time ? p.time : null));
-  chart.timeScale().subscribeVisibleLogicalRangeChange(() => updateLabels());
   new ResizeObserver(() => { if (tfPending && $("chart").clientWidth > 0) setTimeout(applyTf, 0); }).observe($("chart"));
   styleSeries();
 }
@@ -471,30 +470,23 @@ function setSeriesData(resetRange) {
   for (const s of [closeS, smaS, candleS]) s.applyOptions({ priceFormat: pf });
   band.setData(bands); smaS.setData(smas); closeS.setData(closes); candleS.setData(candles);
   // Latest close: dotted line + value on the price axis, shown even when the last bar is scrolled out of view.
-  for (const [ser, pl] of priceLines) ser.removePriceLine(pl);
-  priceLines = [];
   lastPrice = last[4];
-  const pxLine = { price: last[4], color: lastCol, lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: true };
-  priceLines.push([closeS, closeS.createPriceLine(pxLine)], [candleS, candleS.createPriceLine(pxLine)]);
+  pxLineOpts = { price: last[4], color: lastCol, lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: true };
   updateLabels();
 
   styleSeries();
   if (resetRange) applyTf();
   legend(null);
 }
-/* One label for the latest price (dotted line). A second label for the last visible bar only when
-   the latest bar is scrolled out of view, as in TradingView. */
+/* A single label on the price axis for the latest price, on the dotted red line (no label for the last
+   visible bar). The line is attached to the series currently drawn so it can never be duplicated. */
+let pxLineOpts = null;
 function updateLabels() {
-  if (!rows.length) return;
-  const lineOn = state.sma || !state.candles;
-  const r = chart.timeScale().getVisibleLogicalRange();
-  const lastIn = !r || r.to >= rows.length - 1;
-  closeS.applyOptions({ lastValueVisible: lineOn && !lastIn });
-  candleS.applyOptions({ lastValueVisible: !lineOn && !lastIn });
-  for (const [ser, pl] of priceLines) {
-    const own = ser === (lineOn ? closeS : candleS);
-    pl.applyOptions({ axisLabelVisible: own, lineVisible: own });
-  }
+  for (const [ser, pl] of priceLines) ser.removePriceLine(pl);
+  priceLines = [];
+  if (!rows.length || !pxLineOpts) return;
+  const ser = state.sma || !state.candles ? closeS : candleS;
+  priceLines.push([ser, ser.createPriceLine(pxLineOpts)]);
 }
 function applyTf() {
   if (!rows.length) return;
