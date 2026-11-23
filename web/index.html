@@ -430,6 +430,7 @@ function buildChart() {
   markClose = LWC.createSeriesMarkers(closeS, []);
   markCandle = LWC.createSeriesMarkers(candleS, []);
   chart.subscribeCrosshairMove((p) => legend(p && p.time ? p.time : null));
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => refreshBarLabel());
   new ResizeObserver(() => { if (tfPending && $("chart").clientWidth > 0) setTimeout(applyTf, 0); }).observe($("chart"));
   styleSeries();
 }
@@ -478,8 +479,10 @@ function setSeriesData(resetRange) {
   if (resetRange) applyTf();
   legend(null);
 }
-/* A single label on the price axis for the latest price, on the dotted red line (no label for the last
-   visible bar). The line is attached to the series currently drawn so it can never be duplicated. */
+/* Price axis labels, as in TradingView:
+   1. latest price on the dotted red line (always, one label only);
+   2. last visible bar, only when the latest bar is scrolled out of view (otherwise it would repeat label 1);
+   3. 200 SMA at the last visible bar (series label, always). */
 let pxLineOpts = null;
 function updateLabels() {
   for (const [ser, pl] of priceLines) ser.removePriceLine(pl);
@@ -487,6 +490,15 @@ function updateLabels() {
   if (!rows.length || !pxLineOpts) return;
   const ser = state.sma || !state.candles ? closeS : candleS;
   priceLines.push([ser, ser.createPriceLine(pxLineOpts)]);
+  refreshBarLabel();
+}
+function refreshBarLabel() {
+  if (!rows.length) return;
+  const r = chart.timeScale().getVisibleLogicalRange();
+  const latestInView = !r || r.to >= rows.length - 1;
+  const lineOn = state.sma || !state.candles;
+  closeS.applyOptions({ lastValueVisible: lineOn && !latestInView });
+  candleS.applyOptions({ lastValueVisible: !lineOn && !latestInView });
 }
 function applyTf() {
   if (!rows.length) return;
