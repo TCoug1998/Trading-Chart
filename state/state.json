@@ -5,18 +5,18 @@
   },
   "SPX": {
     "last_event": "2026-11-18:SELL",
-    "near": false
+    "near": true
   },
   "_health": {
     "email": {
       "detail": "",
       "status": "ok",
-      "t": "2026-11-22T16:48:48+00:00"
+      "t": "2026-11-23T21:14:10+00:00"
     },
     "push": {
-      "detail": "",
-      "status": "ok",
-      "t": "2026-11-22T16:48:48+00:00"
+      "detail": "Push: device 1 subscription expired",
+      "status": "fail",
+      "t": "2026-11-23T21:14:10+00:00"
     }
   },
   "_heartbeat": "2026-11",
@@ -28,6 +28,14 @@
       "sym": "SPX,NDQ",
       "t": "2026-11-22T16:48:48+00:00",
       "title": "Test d'alerte"
+    },
+    {
+      "email": "ok",
+      "kind": "NEAR",
+      "push": "fail",
+      "sym": "SPX",
+      "t": "2026-11-23T21:14:10+00:00",
+      "title": "SPX : proche de la 200 SMA"
     }
   ]
 }
