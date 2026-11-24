@@ -1,0 +1,152 @@
+name: Mise à jour des données
+
+on:
+  schedule:
+    - cron: "17 * * * 1-5"      # every hour on weekdays (UTC)
+    - cron: "17 */6 * * 0,6"    # every 6 hours at weekends (crypto)
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Envoyer une alerte de test (push et e-mail)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["web/**", "config/**", "scripts/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  # 1. Data, alerts, alert state, site files
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true   # a single failure does not fail the run (see "watchdog")
+    permissions:
+      contents: write   # commit the small alert-state file only
+    outputs:
+      ok: ${{ steps.done.outputs.ok }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Check signal engine against the Pine rule
+        run: python tests/test_signals.py
+
+      - name: Update data and send alerts
+        env:
+          TEST_ALERT: ${{ github.event.inputs.test_alert || 'false' }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          WEBPUSH_SUBSCRIPTION: ${{ secrets.WEBPUSH_SUBSCRIPTION }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: python scripts/update.py
+
+      - name: Save alert state
+        run: |
+          if ! git diff --quiet -- state/; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state/state.json
+            git commit -m "Alert state update"
+            for i in 1 2 3; do
+              git pull --rebase --quiet origin main && git push && break
+              sleep 5
+            done
+          fi
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+
+      - id: done
+        run: echo "ok=true" >> "$GITHUB_OUTPUT"
+
+  # 2. Publish the site. Separate job (GitHub's recommended layout) + one automatic retry,
+  #    because the artifact service can take a few seconds to list a freshly uploaded site.
+  deploy:
+    needs: build
+    if: needs.build.outputs.ok == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    outputs:
+      ok: ${{ steps.done.outputs.ok }}
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url || steps.retry.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
+        continue-on-error: true
+
+      - name: Wait before retrying
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+
+      - id: retry
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
+
+      - id: done
+        run: echo "ok=true" >> "$GITHUB_OUTPUT"
+
+  # 3. Counts consecutive failed runs. The run is only marked as failed (and GitHub only e-mails you)
+  #    at the 3rd failure in a row, then as a reminder every 12 further failures (about 12 h on weekdays).
+  watchdog:
+    needs: [build, deploy]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .fails
+          key: fails-${{ github.run_id }}
+          restore-keys: fails-
+
+      - id: count
+        env:
+          BUILD_OK: ${{ needs.build.outputs.ok }}
+          DEPLOY_OK: ${{ needs.deploy.outputs.ok }}
+        run: |
+          n=$(cat .fails 2>/dev/null || echo 0)
+          case "$n" in ''|*[!0-9]*) n=0 ;; esac
+          if [ "$BUILD_OK" = "true" ] && [ "$DEPLOY_OK" = "true" ]; then n=0; else n=$((n + 1)); fi
+          echo "$n" > .fails
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+          echo "Consecutive failed runs: $n (build=${BUILD_OK:-failed}, deploy=${DEPLOY_OK:-failed})"
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .fails
+          key: fails-${{ github.run_id }}
+
+      - name: Fail only after 3 failed runs in a row
+        env:
+          N: ${{ steps.count.outputs.n }}
+        run: |
+          if [ "$N" -eq 3 ] || { [ "$N" -gt 3 ] && [ $(( (N - 3) % 12 )) -eq 0 ]; }; then
+            echo "::error::$N mises à jour consécutives en échec. Ouvre les exécutions précédentes pour voir l'étape en erreur."
+            exit 1
+          fi
